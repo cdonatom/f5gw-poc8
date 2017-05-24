@@ -22,7 +22,7 @@ pthread_mutex_t         mutex [THREADS_NUM];
 char                    recv_buff [BUFFER_SIZE]; //shared variable. Read-only.
 int                     sockfd[THREADS_NUM+1]; // Close all sockets when prgm is interrupted
 int                     bytes = 0; //shared variable. Read-only
-
+int                     data_available[THREADS_NUM]; //conditional variable
 
 typedef struct input_thread
 {
@@ -56,7 +56,7 @@ void * send_data(void *input_args)
     if( connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
         sizeof(args->serv_addr)) < 0)
     {
-       printf("Thread %i  | Error : Connect Failed \n", args->id);
+       printf("Thread %i  | connect(): %s\n", args->id, strerror(errno));
        pthread_exit(0);
     }
 
@@ -67,10 +67,20 @@ void * send_data(void *input_args)
     while(1)
     {
         pthread_mutex_lock(&mutex [args->id]);
-        pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
-        printf("Thread %i | Sending packet: %i bytes\n", args->id, strlen(recv_buff));
-        sendto(args->sockfd, recv_buff, bytes, 0, NULL, 0); 
+        while (data_available[args->id] == 0)
+        {
+            pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
+        }
+
+        printf("Thread %i | Sending packet: %i bytes\n", args->id, bytes);
+        sendto(args->sockfd, recv_buff, bytes, 0, NULL, 0);
+        data_available[args->id] = 0;
         pthread_mutex_unlock(&mutex [args->id]);
+        
+        if (bytes <= 0)
+        {
+            pthread_exit(0);
+        }
     }
 } 
 
@@ -116,11 +126,13 @@ int main (int argc, char *argv[])
 
     unsigned int i = 0;
     int rc = 0;
+    
     //Creates the mutexes and threads
     for (i = 0; i < THREADS_NUM; i++) 
     {
         pthread_mutex_init (&mutex[i], NULL);
         pthread_cond_init(&tx_cond[i], NULL);
+        data_available[i] = 0;
 
         memcpy((struct sockaddr*)&(thread_input[i].serv_addr), (struct sockaddr*) &addrs[i], sizeof(struct sockaddr));
         sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
@@ -150,7 +162,6 @@ int main (int argc, char *argv[])
     struct sockaddr_in* addr = (struct sockaddr_in*) &(addrs[THREADS_NUM]);
     printf("Main Thread | Connected to %s\n", inet_ntoa(addr->sin_addr));
  
-
     while(1)
     {
         // Lock all mutex
@@ -158,9 +169,10 @@ int main (int argc, char *argv[])
         {
             pthread_mutex_lock(&mutex[i]);
         }
+        
         memset(recv_buff, '0', sizeof(recv_buff));
 
-        if ((bytes = recv(connfd, recv_buff, sizeof(recv_buff)-1, 0)) < 0)
+        if ((bytes = recv(connfd, recv_buff, sizeof(recv_buff)-1, 0)) <= 0)
         {
             printf("Main Thread | recv(): %s\n", strerror(errno));
             intHandler();
@@ -172,7 +184,8 @@ int main (int argc, char *argv[])
                 
         for (i = 0; i < THREADS_NUM; i++)
         {
-            pthread_cond_broadcast(&tx_cond[i]); //Notify to all threads to TX
+            data_available[i] = 1;
+            pthread_cond_signal(&tx_cond[i]); //Notify to all threads to TX
             pthread_mutex_unlock(&mutex[i]);
         }
     }
