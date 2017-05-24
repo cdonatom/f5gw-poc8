@@ -66,10 +66,16 @@ void * send_data(void *input_args)
     }
 } 
 
-int main ()
+int main (int argc, char *argv[])
 {
+    if (argc != 2 )
+    {
+        printf("%s <D2D IP Address>\n", argv[0]);
+        exit(0);
+    }
     int connfd = 0;
-    struct sockaddr_in addrs[THREADS_NUM+1]; 
+    struct sockaddr_in addrs[THREADS_NUM+1];
+    char* d2d_addr = argv[1];
 
     sockfd[THREADS_NUM] = socket(AF_INET, SOCK_STREAM, 0);
     memset(&addrs[THREADS_NUM], '0', sizeof(struct sockaddr));
@@ -80,6 +86,8 @@ int main ()
     addrs[THREADS_NUM].sin_port = htons(LOCAL_PORT); 
 
     bind(sockfd[THREADS_NUM], (struct sockaddr*)&addrs[THREADS_NUM], sizeof(addrs[THREADS_NUM]));
+    
+    // Catching ctrl-C signal
     signal(SIGINT, intHandler);
 
     // Loopback address
@@ -91,7 +99,7 @@ int main ()
     // D2D address
     memset(&addrs[1], '0', sizeof(struct sockaddr));
     addrs[1].sin_family = AF_INET;
-    addrs[1].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addrs[1].sin_addr.s_addr = inet_addr(d2d_addr);
     addrs[1].sin_port = htons(FWD_D2D_PORT);
 
     input_t thread_input[THREADS_NUM]; //input for threads
