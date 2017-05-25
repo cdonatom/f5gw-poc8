@@ -52,9 +52,11 @@ void intHandler() {
 void * send_data(void *input_args)
 {
     input_t * args = (input_t*)input_args;
+    char buff [BUFFER_SIZE];
+    int buff_bytes = 0;
 
-    if( connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
-        sizeof(args->serv_addr)) < 0)
+    if( (connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
+        sizeof(args->serv_addr))) < 0)
     {
        printf("Thread %i  | connect(): %s\n", args->id, strerror(errno));
        pthread_exit(0);
@@ -66,16 +68,25 @@ void * send_data(void *input_args)
 
     while(1)
     {
+        // Critical section
+        printf("Thread %i | Trying to lock mutex\n", args->id);
         pthread_mutex_lock(&mutex [args->id]);
+        printf("Thread %i | Lock mutex\n", args->id);
         while (data_available[args->id] == 0)
         {
+            printf("Thread %i | Waiting\n", args->id);
             pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
         }
-
-        printf("Thread %i | Sending packet: %i bytes\n", args->id, bytes);
-        sendto(args->sockfd, recv_buff, bytes, 0, NULL, 0);
+       
+        memcpy((char*)buff, recv_buff, BUFFER_SIZE*sizeof(char));
         data_available[args->id] = 0;
+        buff_bytes = bytes;
+
+        // End of critical section
         pthread_mutex_unlock(&mutex [args->id]);
+        printf("Thread %i | Unlock mutex\n", args->id);
+        //printf("Thread %i | Sending packet: %i bytes\n", args->id, buff_bytes);
+        sendto(args->sockfd, buff, buff_bytes, 0, NULL, 0);
         
         if (bytes <= 0)
         {
@@ -104,9 +115,10 @@ int main (int argc, char *argv[])
     addrs[THREADS_NUM].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addrs[THREADS_NUM].sin_port = htons(LOCAL_PORT); 
 
-    bind(sockfd[THREADS_NUM], (struct sockaddr*)&addrs[THREADS_NUM], sizeof(struct sockaddr_in));
+    bind(sockfd[THREADS_NUM], (struct sockaddr*)&addrs[THREADS_NUM], 
+            sizeof(struct sockaddr_in));
     
-    // Catching ctrl-C signal
+    // Catching ctrl-C and sigpipe signals
     signal(SIGINT, intHandler);
     signal(SIGPIPE, intHandler);
 
@@ -134,7 +146,8 @@ int main (int argc, char *argv[])
         pthread_cond_init(&tx_cond[i], NULL);
         data_available[i] = 0;
 
-        memcpy((struct sockaddr*)&(thread_input[i].serv_addr), (struct sockaddr*) &addrs[i], sizeof(struct sockaddr));
+        memcpy((struct sockaddr*)&(thread_input[i].serv_addr), (struct sockaddr*) &addrs[i], 
+                    sizeof(struct sockaddr));
         sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
         thread_input[i].sockfd = sockfd[i];
         thread_input[i].id = i;
@@ -143,7 +156,7 @@ int main (int argc, char *argv[])
         rc = pthread_create(&t_id[i], NULL, send_data, (input_t *)&thread_input[i]);
         if (rc)
         {
-            printf("Maint Thread | ERROR creating thread %i: return code %d\n", i, rc);
+            printf("Main Thread | pthread_create(): %s\n", strerror(errno));
             exit(-1);
        }
     }
@@ -155,7 +168,7 @@ int main (int argc, char *argv[])
 
     if ( (connfd = accept(sockfd[THREADS_NUM], (struct sockaddr*)NULL, NULL)) < 0 )
     {
-        printf("Main Thread | accept(): error %s\n", strerror(errno));
+        printf("Main Thread | accept(): %s\n", strerror(errno));
         intHandler();
     }
 
@@ -167,7 +180,9 @@ int main (int argc, char *argv[])
         // Lock all mutex
         for (i = 0; i < THREADS_NUM; i++)
         {
+            printf("Main Thread | Trying to lock mutex %i\n", i);
             pthread_mutex_lock(&mutex[i]);
+            printf("Main Thread | Lock mutex %i\n", i);
         }
         
         memset(recv_buff, '0', sizeof(recv_buff));
@@ -177,16 +192,18 @@ int main (int argc, char *argv[])
             printf("Main Thread | recv(): %s\n", strerror(errno));
             intHandler();
         }
-        else
+     /* else
         {
             printf("Main Thread | Received %i bytes\n", bytes);
         }
-                
+      */          
         for (i = 0; i < THREADS_NUM; i++)
         {
             data_available[i] = 1;
+            printf("Main Thread | Notifying thread %i\n", i);
             pthread_cond_signal(&tx_cond[i]); //Notify to all threads to TX
             pthread_mutex_unlock(&mutex[i]);
+            printf("Main Thread | Unlock mutex %i\n", i);
         }
     }
 

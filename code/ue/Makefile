@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-pthread -O2
+CFLAGS=-pthread -O2 -Wall
 PROJ=iface_fwd
 
 iface_fwd: iface_fwd.c
