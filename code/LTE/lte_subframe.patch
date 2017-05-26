@@ -1,0 +1,519 @@
+diff --git a/srslte/examples/pdsch_enodeb.c b/srslte/examples/pdsch_enodeb.c
+index fdacde8..aa8c1f2 100644
+--- a/srslte/examples/pdsch_enodeb.c
++++ b/srslte/examples/pdsch_enodeb.c
+@@ -98,9 +98,105 @@ srslte_netsink_t net_sink;
+ int prbset_num = 1, last_prbset_num = 1; 
+ int prbset_orig = 0; 
+ 
++int tx_pattern[10]={1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
++char *bitmask = "f";
++
++int transmitted = 0;
++bool transmission = true;
++int silent = -1;
++int active = -1;
++
++static pthread_t 		ctrl_socket;
++#define BUFLEN 512  //Max length of buffer
++#define PORT 8888   //The port on which to listen for incoming data
++
++int get_ctrl_command(void *x_void_ptr){
++  
++    struct sockaddr_in si_me, si_other;
++    int s, i, slen = sizeof(si_other) , recv_len;
++    char buf[BUFLEN];
++    char *p;
++     
++    //create a UDP socket
++    if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
++    {
++	perror("socket");
++        exit(1);
++    }
++     
++    // zero out the structure
++    memset((char *) &si_me, 0, sizeof(si_me));
++     
++    si_me.sin_family = AF_INET;
++    si_me.sin_port = htons(PORT);
++    si_me.sin_addr.s_addr = htonl(INADDR_ANY);
++     
++    //bind socket to port
++    if( bind(s , (struct sockaddr*)&si_me, sizeof(si_me) ) == -1)
++    {
++        
++	perror("bind");
++        exit(1);
++    }
++     
++    //keep listening for data
++    while(1)
++    {
++        printf("Waiting for data...");
++        fflush(stdout);
++         
++        //try to receive some data, this is a blocking call
++        if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
++        {
++            
++	    perror("recvfrom()");
++            exit(1);
++        }
++         
++        //print details of the client/peer and the data received
++        printf("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
++        printf("Data: %s\n" , buf);
++	
++	
++        p = strtok(buf, ",");
++	int sf_i = 0;
++        while(p != NULL) {
++            tx_pattern[sf_i]=atoi(p);
++            p = strtok(NULL, ",");
++            sf_i++;
++       }
++       strncpy(buf, "", BUFLEN);
++         
++        //now reply the client with the same data
++        //if (sendto(s, buf, recv_len, 0, (struct sockaddr*) &si_other, slen) == -1)
++        //{
++        //    die("sendto()");
++        //}
++        
++        
++        
++        
++        /*
++	int ret=0;
++        struct timespec ttt;
++	(void)ttt;
++	double accum;
++	clock_gettime( CLOCK_MONOTONIC, &ttt );
++	accum = ( ttt.tv_sec) + ttt.tv_nsec/ BILLION;
++        printf( "%lf\n", accum );
++	int *x_ptr = (int *)x_void_ptr;
++	printf("here a code x_ptr= %d \n",*x_ptr);
++	sleep(1);	 
++	 */
++        
++    }
++ 
++    close(s);
++  
++}
+ 
+ void usage(char *prog) {
+-  printf("Usage: %s [agmfoncvpu]\n", prog);
++  printf("Usage: %s [agmfoncvpub]\n", prog);
+ #ifndef DISABLE_RF
+   printf("\t-a RF args [Default %s]\n", rf_args);
+   printf("\t-l RF amplitude [Default %.2f]\n", rf_amp);
+@@ -116,11 +212,17 @@ void usage(char *prog) {
+   printf("\t-p nof_prb [Default %d]\n", cell.nof_prb);
+   printf("\t-u listen TCP port for input data (-1 is random) [Default %d]\n", net_port);
+   printf("\t-v [set srslte_verbose to debug, default none]\n");
++  printf("\t-b full/half bitmask for resource blocks [Default %s]\n", bitmask);
++  printf("\t-w subframe slot mask [Default: %u,%u,%u,%u,%u,%u,%u,%u,%u,%u]\n", 
++	tx_pattern[0],tx_pattern[1],tx_pattern[2],tx_pattern[3],tx_pattern[4],tx_pattern[5],tx_pattern[6],tx_pattern[7],tx_pattern[8],tx_pattern[9]);
+ }
+ 
+ void parse_args(int argc, char **argv) {
+   int opt;
+-  while ((opt = getopt(argc, argv, "aglfmoncpvu")) != -1) {
++  char *p; 
++  char s[256];
++  int sf_i=0;
++  while ((opt = getopt(argc, argv, "aglfmoncpvubw")) != -1) {
+     switch (opt) {
+     case 'a':
+       rf_args = argv[optind];
+@@ -155,6 +257,18 @@ void parse_args(int argc, char **argv) {
+     case 'v':
+       srslte_verbose++;
+       break;
++    case 'b':
++      bitmask = argv[optind];
++      break;
++    case 'w':
++      strcpy(s, argv[optind]);
++      p = strtok(s, ",");
++      while(p != NULL) {
++	    tx_pattern[sf_i]=atoi(p);
++	    p = strtok(NULL, ",");
++	    sf_i++;
++      }
++      break;
+     default:
+       usage(argv[0]);
+       exit(-1);
+@@ -169,7 +283,6 @@ void parse_args(int argc, char **argv) {
+ }
+ 
+ void base_init() {
+-  
+   /* init memory */
+   sf_buffer = srslte_vec_malloc(sizeof(cf_t) * sf_n_re);
+   if (!sf_buffer) {
+@@ -264,6 +377,11 @@ void base_init() {
+     fprintf(stderr, "Error initiating soft buffer\n");
+     exit(-1);
+   }
++
++  if(strcmp(bitmask, "f") != 0 && strcmp(bitmask, "h") != 0) {
++    fprintf(stderr, "Error setting bitmask\n");
++    exit(-1);
++  }
+ }
+ 
+ void base_free() {
+@@ -324,12 +442,17 @@ reverse(register unsigned int x)
+ uint32_t prbset_to_bitmask() {
+   uint32_t mask=0;
+   int nb = (int) ceilf((float) cell.nof_prb / srslte_ra_type0_P(cell.nof_prb));
+-  for (int i=0;i<nb;i++) {
++  int sup;
++  if(strcmp(bitmask, "f") == 0)
++    sup = nb;
++  else
++    sup = (int) ceil(nb/2);
++  for (int i=0;i<sup;i++) {
+     if (i >= prbset_orig && i < prbset_orig + prbset_num) {
+-      mask = mask | (0x1<<i);     
++      mask = mask | (0x1<<i);
+     }
+   }
+-  return reverse(mask)>>(32-nb); 
++  return reverse(mask)>>(32-nb);
+ }
+ 
+ int update_radl() {
+@@ -427,18 +550,20 @@ void *net_thread_fnc(void *arg) {
+       rpm += n; 
+       INFO("received %d bytes. rpm=%d/%d\n",n,rpm,nbytes);
+       wpm = 0; 
+-      while (rpm >= nbytes) {
+-        // wait for packet to be transmitted
+-        sem_wait(&net_sem);
+-        memcpy(data, &data2[wpm], nbytes);          
+-        INFO("Sent %d/%d bytes ready\n", nbytes, rpm);
+-        rpm -= nbytes;          
+-        wpm += nbytes; 
+-        net_packet_ready = true; 
+-      }
+-      if (wpm > 0) {
+-        INFO("%d bytes left in buffer for next packet\n", rpm);
+-        memcpy(data2, &data2[wpm], rpm * sizeof(uint8_t));
++      if(transmission == true){
++	      while (rpm >= nbytes) {
++		// wait for packet to be transmitted
++		sem_wait(&net_sem);
++		memcpy(data, &data2[wpm], nbytes);          
++		INFO("Sent %d/%d bytes ready\n", nbytes, rpm);
++		rpm -= nbytes;          
++		wpm += nbytes; 
++		net_packet_ready = true; 
++	      }
++	      if (wpm > 0) {
++		INFO("%d bytes left in buffer for next packet\n", rpm);
++		memcpy(data2, &data2[wpm], rpm * sizeof(uint8_t));
++	      }
+       }
+     } else if (n == 0) {
+       rpm = 0; 
+@@ -536,6 +661,8 @@ int main(int argc, char **argv) {
+   }
+ #endif
+ 
++  printf("subframe pattern: [%u,%u,%u,%u,%u,%u,%u,%u,%u,%u]\n", 
++	tx_pattern[0],tx_pattern[1],tx_pattern[2],tx_pattern[3],tx_pattern[4],tx_pattern[5],tx_pattern[6],tx_pattern[7],tx_pattern[8],tx_pattern[9]);
+   if (update_radl(sf_idx)) {
+     exit(-1);
+   }
+@@ -561,85 +688,120 @@ int main(int argc, char **argv) {
+ #ifndef DISABLE_RF
+   bool start_of_burst = true; 
+ #endif
++/*
++  int index_test=0; 
++  char x[10]="1111111111";
++  FILE *fp;
++  fp=fopen("test.txt", "r");
++  fread(&x,sizeof(x),1,fp);
++*/
++
++  /* START CTRL thread*/ 
++  
++  int x = 0;
++  if(pthread_create(&ctrl_socket, NULL, get_ctrl_command, &x)) {
++     fprintf(stderr, "Error creating thread\n");
++     return 1;
++  }
+   
+   while ((nf < nof_frames || nof_frames == -1) && !go_exit) {
++/*
++    index_test++;
++    if (index_test==1){
++	tx_pattern[9]=(tx_pattern[9]+1)%2;
++	tx_pattern[0]=(tx_pattern[0]+1)%2;
++	index_test=0;
++        fread(&x,sizeof(x),1,fp);
++	//printf("x=%s\n",x);
++    }
++*/
+     for (sf_idx = 0; sf_idx < SRSLTE_NSUBFRAMES_X_FRAME && (nf < nof_frames || nof_frames == -1); sf_idx++) {
+       bzero(sf_buffer, sizeof(cf_t) * sf_n_re);
+ 
+-      if (sf_idx == 0 || sf_idx == 5) {
+-        srslte_pss_put_slot(pss_signal, sf_buffer, cell.nof_prb, SRSLTE_CP_NORM);
+-        srslte_sss_put_slot(sf_idx ? sss_signal5 : sss_signal0, sf_buffer, cell.nof_prb,
+-            SRSLTE_CP_NORM);
+-      }
+-
+-      srslte_refsignal_cs_put_sf(cell, 0, est.csr_signal.pilots[0][sf_idx], sf_buffer);
+-
+-      srslte_pbch_mib_pack(&cell, sfn, bch_payload);
+-      if (sf_idx == 0) {
+-        srslte_pbch_encode(&pbch, bch_payload, slot1_symbols, nf%4);
+-      }
+-
+-      srslte_pcfich_encode(&pcfich, cfi, sf_symbols, sf_idx);       
+-
+-      /* Update DL resource allocation from control port */
+-      if (update_control(sf_idx)) {
+-        fprintf(stderr, "Error updating parameters from control port\n");
+-      }
+-      
+-      /* Transmit PDCCH + PDSCH only when there is data to send */
+-      if (net_port > 0) {
+-        send_data = net_packet_ready; 
+-        if (net_packet_ready) {
+-          INFO("Transmitting packet\n",0);
+-        }
+-      } else {
+-        INFO("SF: %d, Generating %d random bits\n", sf_idx, pdsch_cfg.grant.mcs.tbs);
+-        for (i=0;i<pdsch_cfg.grant.mcs.tbs/8;i++) {
+-          data[i] = rand()%256;
+-        }
+-        /* Uncomment this to transmit on sf 0 and 5 only  */
+-        if (sf_idx != 0 && sf_idx != 5) {
+-          send_data = true; 
+-        } else {
+-          send_data = false;           
+-        }
+-      }        
+-      
+-      if (send_data) {
+-              
+-        /* Encode PDCCH */
+-        INFO("Putting DCI to location: n=%d, L=%d\n", locations[sf_idx][0].ncce, locations[sf_idx][0].L);
+-        srslte_dci_msg_pack_pdsch(&ra_dl, SRSLTE_DCI_FORMAT1, &dci_msg, cell.nof_prb, false);
+-        if (srslte_pdcch_encode(&pdcch, &dci_msg, locations[sf_idx][0], UE_CRNTI, sf_symbols, sf_idx, cfi)) {
+-          fprintf(stderr, "Error encoding DCI message\n");
+-          exit(-1);
+-        }
++//      if(sf_idx == 1 || sf_idx == 3 || sf_idx == 6 || sf_idx == 8){
++//      if(sf_idx == 6 || sf_idx == 7 || sf_idx == 8 || sf_idx == 9){
++      if (tx_pattern[sf_idx]==0){
+ 
+-        /* Configure pdsch_cfg parameters */
+-        srslte_ra_dl_grant_t grant; 
+-        srslte_ra_dl_dci_to_grant(&ra_dl, cell.nof_prb, UE_CRNTI, &grant);        
+-        if (srslte_pdsch_cfg(&pdsch_cfg, cell, &grant, cfi, sf_idx, 0)) {
+-          fprintf(stderr, "Error configuring PDSCH\n");
+-          exit(-1);
+-        }
+-       
+-        /* Encode PDSCH */
+-        if (srslte_pdsch_encode(&pdsch, &pdsch_cfg, &softbuffer, data, sf_symbols)) {
+-          fprintf(stderr, "Error encoding PDSCH\n");
+-          exit(-1);
+-        }        
+-        if (net_port > 0 && net_packet_ready) {
+-          if (null_file_sink) {
+-            srslte_bit_pack_vector(data, data_tmp, pdsch_cfg.grant.mcs.tbs);
+-            if (srslte_netsink_write(&net_sink, data_tmp, 1+(pdsch_cfg.grant.mcs.tbs-1)/8) < 0) {
+-              fprintf(stderr, "Error sending data through UDP socket\n");
+-            }            
+-          }
+-          net_packet_ready = false; 
+-          sem_post(&net_sem);
+-        }
++        //printf("[%d] Silent - sf_idx: %d\n", index_test, sf_idx);
++        transmission = false;
++	
+       }
+-      
++      else{
++	      //printf("[%d] Transmitting sf_idx: %d\n", index_test, sf_idx);
++	      transmission = true;
++
++
++
++	      if (sf_idx == 0 || sf_idx == 5) {
++		srslte_pss_put_slot(pss_signal, sf_buffer, cell.nof_prb, SRSLTE_CP_NORM);
++		srslte_sss_put_slot(sf_idx ? sss_signal5 : sss_signal0, sf_buffer, cell.nof_prb,
++		    SRSLTE_CP_NORM);
++	      }
++
++	      srslte_refsignal_cs_put_sf(cell, 0, est.csr_signal.pilots[0][sf_idx], sf_buffer);
++
++	      srslte_pbch_mib_pack(&cell, sfn, bch_payload);
++	      if (sf_idx == 0) {
++		srslte_pbch_encode(&pbch, bch_payload, slot1_symbols, nf%4);
++	      }
++
++	      srslte_pcfich_encode(&pcfich, cfi, sf_symbols, sf_idx);       
++
++	      /* Update DL resource allocation from control port */
++	      if (update_control(sf_idx)) {
++		fprintf(stderr, "Error updating parameters from control port\n");
++	      }
++	      
++	      /* Transmit PDCCH + PDSCH only when there is data to send */
++	      if (net_port > 0) {
++		send_data = net_packet_ready; 
++		if (net_packet_ready) {
++		  INFO("Transmitting packet\n",0);
++		}
++	      } else {
++		INFO("SF: %d, Generating %d random bits\n", sf_idx, pdsch_cfg.grant.mcs.tbs);
++		for (i=0;i<pdsch_cfg.grant.mcs.tbs/8;i++) {
++		  data[i] = rand()%256;
++		}
++		send_data = true;           
++		
++	      }        
++	      
++	      if (send_data) {
++		      
++		/* Encode PDCCH */
++		INFO("Putting DCI to location: n=%d, L=%d\n", locations[sf_idx][0].ncce, locations[sf_idx][0].L);
++		srslte_dci_msg_pack_pdsch(&ra_dl, SRSLTE_DCI_FORMAT1, &dci_msg, cell.nof_prb, false);
++		if (srslte_pdcch_encode(&pdcch, &dci_msg, locations[sf_idx][0], UE_CRNTI, sf_symbols, sf_idx, cfi)) {
++		  fprintf(stderr, "Error encoding DCI message\n");
++		  exit(-1);
++		}
++
++		/* Configure pdsch_cfg parameters */
++		srslte_ra_dl_grant_t grant; 
++		srslte_ra_dl_dci_to_grant(&ra_dl, cell.nof_prb, UE_CRNTI, &grant);        
++		if (srslte_pdsch_cfg(&pdsch_cfg, cell, &grant, cfi, sf_idx, 0)) {
++		  fprintf(stderr, "Error configuring PDSCH\n");
++		  exit(-1);
++		}
++	       
++		/* Encode PDSCH */
++		if (srslte_pdsch_encode(&pdsch, &pdsch_cfg, &softbuffer, data, sf_symbols)) {
++		  fprintf(stderr, "Error encoding PDSCH\n");
++		  exit(-1);
++		}        
++		if (net_port > 0 && net_packet_ready) {
++		  if (null_file_sink) {
++		    srslte_bit_pack_vector(data, data_tmp, pdsch_cfg.grant.mcs.tbs);
++		    if (srslte_netsink_write(&net_sink, data_tmp, 1+(pdsch_cfg.grant.mcs.tbs-1)/8) < 0) {
++		      fprintf(stderr, "Error sending data through UDP socket\n");
++		    }            
++		  }
++		  net_packet_ready = false; 
++		  sem_post(&net_sem);
++		}
++	      }
++      } 
+       /* Transform to OFDM symbols */
+       srslte_ofdm_tx_sf(&ifft, sf_buffer, output_buffer);
+       
+@@ -664,7 +826,7 @@ int main(int argc, char **argv) {
+   }
+ 
+   base_free();
+-
++  //fclose(fp);
+   printf("Done\n");
+   exit(0);
+ }
+diff --git a/srslte/examples/pdsch_ue.c b/srslte/examples/pdsch_ue.c
+index a9f48b9..b669ae7 100644
+--- a/srslte/examples/pdsch_ue.c
++++ b/srslte/examples/pdsch_ue.c
+@@ -273,6 +273,7 @@ srslte_ue_sync_t ue_sync;
+ prog_args_t prog_args; 
+ 
+ uint32_t sfn = 0; // system frame number
++uint32_t n_count = 0; // system frame number
+ cf_t *sf_buffer = NULL; 
+ srslte_netsink_t net_sink, net_sink_signal; 
+ 
+@@ -460,6 +461,11 @@ int main(int argc, char **argv) {
+             
+   INFO("\nEntering main loop...\n\n", 0);
+   /* Main loop */
++
++  FILE *stats;
++  stats = fopen("/tmp/lte_ue.json", "w+");
++
++  struct timeval tp;
+   while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
+     
+     ret = srslte_ue_sync_get_buffer(&ue_sync, &sf_buffer);
+@@ -552,30 +558,57 @@ int main(int argc, char **argv) {
+ 
+           // Plot and Printf
+           if (srslte_ue_sync_get_sfidx(&ue_sync) == 5) {
++            n_count++;
+             float gain = prog_args.rf_gain; 
+             if (gain < 0) {
+               gain = 10*log10(srslte_agc_get_gain(&ue_sync.agc)); 
+             }
+-            printf("CFO: %+6.2f kHz, "
++            if (n_count==50)
++	    {
++	       gettimeofday(&tp, NULL);
++	       long int ss = tp.tv_sec;
++	       long int us = tp.tv_usec;
++	       n_count=0;
++	       char json_str[400];
++               sprintf(json_str," {\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f, \"timestamp\":%llu.%llu}\n",
++            //   sprintf(json_str," {\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f}\n",
++                  srslte_ue_sync_get_cfo(&ue_sync)/1000,
++                  10*log10(rsrp/noise), 
++                  100*(1-(float) ue_dl.nof_detected/nof_trials), 
++                  (float) 100*ue_dl.pkt_errors/ue_dl.pkts_total,
++		  ss,us);                        
++		  fputs(json_str, stats);
++		  fflush(stats);
++		  puts(json_str);
++/*
++               printf("CFO: %+6.2f kHz, "
+                    "SNR: %4.1f dB, "
+-                   "PDCCH-Miss: %5.2f%%, PDSCH-BLER: %5.2f%%\r",
++                   "PDCCH-Miss: %5.2f%%, PDSCH-BLER: %5.2f%%\n",
+                    
+                   srslte_ue_sync_get_cfo(&ue_sync)/1000,
+                   10*log10(rsrp/noise), 
+                   100*(1-(float) ue_dl.nof_detected/nof_trials), 
+                   (float) 100*ue_dl.pkt_errors/ue_dl.pkts_total);                        
+-          }
++*/
++               ue_dl.pkt_errors = 0; 
++               ue_dl.pkts_total = 0; 
++               ue_dl.nof_detected = 0;           
++               nof_trials = 0; 
++            }
++	  }
+           break;
+       }
+       if (srslte_ue_sync_get_sfidx(&ue_sync) == 9) {
+         sfn++; 
+         if (sfn == 1024) {
+           sfn = 0; 
++/*
+           printf("\n");
+           ue_dl.pkt_errors = 0; 
+           ue_dl.pkts_total = 0; 
+           ue_dl.nof_detected = 0;           
+           nof_trials = 0; 
++*/
+         } 
+       }
+       

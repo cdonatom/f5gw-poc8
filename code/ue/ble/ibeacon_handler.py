@@ -18,8 +18,9 @@ rate=115200
 info='test'
 info=0;
 T=2
+tsleep=0.5
 TYPE='lte'
-DEBUG=False
+DEBUG=True
 
 #input: LTE stats json
 #output: enforce new TST sensor name
@@ -39,12 +40,12 @@ def update_tx_lte_stats(x):
 		tx_lte_stats={'type':TYPE,'ue_id':tx_lte_stats['ue_id'], 'snr':tx_lte_stats['snr'] , 'bler':tx_lte_stats['bler']}
 		ser = serial.Serial(port, rate, timeout=1)
 		ser.write('0');
-		time.sleep(0.1)
+		time.sleep(tsleep)
 		ser.write('{},{},{},{}'.format(tx_lte_stats['type'],tx_lte_stats['ue_id'],tx_lte_stats['snr'],tx_lte_stats['bler']));
-		time.sleep(0.1)
+		time.sleep(tsleep)
 		if DEBUG:
 			print ser.read(1024);
-			time.sleep(0.1)
+			time.sleep(tsleep)
 
 # use bluetooth dongle to receive ibeacon values
 # output: list of json, each dict contains:
