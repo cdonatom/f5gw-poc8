@@ -128,7 +128,7 @@ def rx_ibeacon_info(x):
 		if rx_lte_stats:
 			sock_out = socket.socket(socket.AF_INET, # Internet
 				     socket.SOCK_DGRAM) # UDP
-		sock_out.sendto(json.dumps(rx_lte_stats), (UDP_IP, UDP_OUTPUT_PORT))
+			sock_out.sendto(json.dumps(rx_lte_stats), (UDP_IP, UDP_OUTPUT_PORT))
 
 def ibeacon_stats():
 
