@@ -2,4 +2,11 @@ ibeacon_handler module
 
 module name: ibeacon_handler
 
-main function: ibeacon_handler_stats
+main function: ibeacon_stats
+
+
+example usage:
+	$ import ibeacon_handler
+	$ ibeacon_handler.ibeacon_stats()
+
+
