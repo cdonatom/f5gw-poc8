@@ -11,41 +11,47 @@ import bluetooth._bluetooth as bluez
 from ble import scan_ble_devices
 
 UDP_IP = "127.0.0.1"
-UDP_INPUT_PORT = 5005
+UDP_INPUT_PORT = 9999
 UDP_OUTPUT_PORT = 5055
 port='/dev/ttyUSB0'
 rate=115200
 info='test'
 info=0;
-T=2
-tsleep=0.5
+T=5
+tsleep=0.2
 TYPE='lte'
 DEBUG=True
-
+UE_ID=2
 #input: LTE stats json
 #output: enforce new TST sensor name
 def update_tx_lte_stats(x):
 	sock_in = socket.socket(socket.AF_INET, # Internet
 		     socket.SOCK_DGRAM) # UDP
 	sock_in.bind((UDP_IP, UDP_INPUT_PORT))
+	t_start=time.time()
+	t_stop=t_start
 	while True:
-		if DEBUG: 
-			print "listen..."
 		data, addr = sock_in.recvfrom(1024) # buffer size is 1024 bytes
-		if DEBUG: 
-			print "received message:", data
-		tx_lte_stats=json.loads(data)
-		if DEBUG: 
-			print "received message:", tx_lte_stats
-		tx_lte_stats={'type':TYPE,'ue_id':tx_lte_stats['ue_id'], 'snr':tx_lte_stats['snr'] , 'bler':tx_lte_stats['bler']}
-		ser = serial.Serial(port, rate, timeout=1)
-		ser.write('0');
-		time.sleep(tsleep)
-		ser.write('{},{},{},{}'.format(tx_lte_stats['type'],tx_lte_stats['ue_id'],tx_lte_stats['snr'],tx_lte_stats['bler']));
-		time.sleep(tsleep)
-		if DEBUG:
-			print ser.read(1024);
+		print data
+		lte_json=json.loads(data)
+
+		tx_lte_stats={'type':TYPE,'ue_id':UE_ID, 'snr':int(lte_json['SNR']) , 'bler':int(lte_json['PDSCH-BLER'])}
+		t_stop=time.time()
+		print t_stop-t_start
+		
+		
+		if (t_stop-t_start) >= T:
+			ser = serial.Serial(port, rate, timeout=1)
+			ser.write('0');
 			time.sleep(tsleep)
+			ser.write('{},{},{},{}'.format(tx_lte_stats['type'],tx_lte_stats['ue_id'],tx_lte_stats['snr'],tx_lte_stats['bler']));
+			time.sleep(tsleep)
+			#print ser.read(1024);
+			#time.sleep(tsleep)
+			t_start=time.time()
+			t_stop=t_start;
+
+
 
 # use bluetooth dongle to receive ibeacon values
 # output: list of json, each dict contains:
@@ -55,9 +61,8 @@ def update_tx_lte_stats(x):
 #		'bler':int(lte_info_curr[3]), 
 #		'rssi_bcn':int(rssi_i['rssi_bcn'])}
 
-dev='hci0'
 tout=2
-def get_sta_info():
+def get_sta_info(dev):
 	sta_info={}
 	try:
 		v=scan_ble_devices(dev,'lte*',tout)
@@ -107,29 +112,26 @@ def parse_ble_info(sta_info,rssi_info):
 			break
 	return ret
 def rx_ibeacon_info(x):
-
+	dev='hci0'
 	while True:
 		#GET STA INFO and NAME
-		sta_info=get_sta_info();
-		#if DEBUG:
-			#print "-------------"
-			#print sta_info
-			#print "-------------"
+		sta_info=get_sta_info(dev);
+		print "-------------"
+		print sta_info
+		print "-------------"
 		
 		os.system('hciconfig {0} reset'.format(dev))
-		time.sleep(0.1)
+		time.sleep(0.2)
 		#GET POWER INFO
 		rssi_info=get_rssi_info()
-		#if DEBUG:
-			#print "==========="
-			#print rssi_info
-			#print "==========="
+		print "==========="
+		print rssi_info
+		print "==========="
 		#parse data in single data struct
 		rx_lte_stats = parse_ble_info(sta_info,rssi_info) 
-		#if DEBUG:
-			#print "************"
-			#print rx_lte_stats
-			#print "************"
+		print "************"
+		print rx_lte_stats
+		print "************"
 		
 		#Report lte stats via UDP socket
 		#print json.dumps(rx_lte_stats)
