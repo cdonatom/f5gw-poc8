@@ -56,10 +56,11 @@ def update_tx_lte_stats(x):
 #		'rssi_bcn':int(rssi_i['rssi_bcn'])}
 
 dev='hci0'
+tout=2
 def get_sta_info():
 	sta_info={}
 	try:
-		v=scan_ble_devices(dev,'lte*')
+		v=scan_ble_devices(dev,'lte*',tout)
 		#v=scan_ble_devices('hci0')
 		if v:
 			#sta_info=v[0]
