@@ -55,12 +55,11 @@ def update_tx_lte_stats(x):
 #		'bler':int(lte_info_curr[3]), 
 #		'rssi_bcn':int(rssi_i['rssi_bcn'])}
 
-
+dev='hci0'
 def get_sta_info():
-	os.system('hciconfig hci0 down; hciconfig hci0 up;')
 	sta_info={}
 	try:
-		v=scan_ble_devices('hci0','lte*')
+		v=scan_ble_devices(dev,'lte*')
 		#v=scan_ble_devices('hci0')
 		if v:
 			#sta_info=v[0]
@@ -82,8 +81,10 @@ def get_rssi_info():
 			ibcn = found.split(',')
 			rssi_dict={'addr':ibcn[0],'rssi_bcn':ibcn[5]}
 			rssi_info.append(rssi_dict)
+		sock.close()
 	except Exception,e :
 		print e
+	
 	return rssi_info
 
 def parse_ble_info(sta_info,rssi_info):
@@ -109,20 +110,25 @@ def rx_ibeacon_info(x):
 	while True:
 		#GET STA INFO and NAME
 		sta_info=get_sta_info();
-		#print "-------------"
-		#print sta_info
-		#print "-------------"
+		#if DEBUG:
+			#print "-------------"
+			#print sta_info
+			#print "-------------"
 		
+		os.system('hciconfig {0} reset'.format(dev))
+		time.sleep(0.1)
 		#GET POWER INFO
 		rssi_info=get_rssi_info()
-		#print "==========="
-		#print rssi_info
-		#print "==========="
+		#if DEBUG:
+			#print "==========="
+			#print rssi_info
+			#print "==========="
 		#parse data in single data struct
 		rx_lte_stats = parse_ble_info(sta_info,rssi_info) 
-		#print "************"
-		#print rx_lte_stats
-		#print "************"
+		#if DEBUG:
+			#print "************"
+			#print rx_lte_stats
+			#print "************"
 		
 		#Report lte stats via UDP socket
 		#print json.dumps(rx_lte_stats)
