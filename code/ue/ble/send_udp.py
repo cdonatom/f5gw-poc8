@@ -2,7 +2,7 @@ import socket
 import random
 import json
 UDP_IP = "127.0.0.1"
-UDP_PORT = 5005
+UDP_PORT = 9999
 ue_id='1'
 
 print "UDP target IP:", UDP_IP
@@ -10,7 +10,7 @@ print "UDP target port:", UDP_PORT
 
 snr=random.randint(-100,0)
 bler=random.randint(0,100)
-mjson={'ue_id':ue_id,'snr':snr,'bler':bler}
+mjson={'ue_id':ue_id,'SNR':snr,'PDSCH-BLER':bler}
 MESSAGE = json.dumps(mjson)
 print MESSAGE
 
