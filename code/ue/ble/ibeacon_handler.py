@@ -125,13 +125,13 @@ def rx_ibeacon_info(x):
 				     socket.SOCK_DGRAM) # UDP
 			sock_out.sendto(json.dumps(rx_lte_stats), (UDP_IP, UDP_OUTPUT_PORT))
 
-def ibeacon_stats(ue_id):
+def ibeacon_stats(iface,ue_id):
 	if not os.geteuid() == 0:
 	    sys.exit('Script must be run as root')
 	print "---------------------------------------"
 	print "UDP output on port {}".format(UDP_OUTPUT_PORT)
 	print "---------------------------------------"
-	thread.start_new_thread(run_bluez_discovety,('hci0',ue_id,))
-	thread.start_new_thread(update_tx_lte_stats,(1,))
+	thread.start_new_thread(run_bluez_discovety,(iface,ue_id,))
+	thread.start_new_thread(update_tx_lte_stats,(ue_id,))
 	while True:
 		time.sleep(1)
