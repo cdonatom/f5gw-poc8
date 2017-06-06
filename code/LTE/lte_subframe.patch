@@ -433,17 +433,38 @@ index fdacde8..aa8c1f2 100644
    exit(0);
  }
 diff --git a/srslte/examples/pdsch_ue.c b/srslte/examples/pdsch_ue.c
-index a9f48b9..6e60aa7 100644
+index a9f48b9..b5c522a 100644
 --- a/srslte/examples/pdsch_ue.c
 +++ b/srslte/examples/pdsch_ue.c
-@@ -97,6 +97,36 @@ typedef struct {
+@@ -36,6 +36,9 @@
+ #include <signal.h>
+ #include <pthread.h>
+ #include <semaphore.h>
++#include <errno.h>
++#include <sys/socket.h>
++#include <sys/un.h>
+ 
+ #include "srslte/srslte.h"
+ 
+@@ -95,8 +98,94 @@ typedef struct {
+   char *net_address; 
+   int net_port_signal; 
    char *net_address_signal;   
++  char *net_address_controller;   
++  int ue_id;
  }prog_args_t;
  
-+#define LTE_STATS_PORT 9999
++
++
++
++
++
++
++#define LTE_STATS_PORT 10001
 +#define BUFSIZE 1024
 +#define LTE_STATS_ADDR "127.0.0.1"
-+int send_lte_stats(char * msg, int msglen){
++
++int send_lte_stats(prog_args_t *args, char * msg, int msglen){
 +	int sock;
 +	int n;
 +	int ret =0;
@@ -453,7 +474,7 @@ index a9f48b9..6e60aa7 100644
 +	memset(&saddr, 0, sizeof(saddr));
 +	saddr.sin_family= AF_INET;
 +	saddr.sin_port= htons(LTE_STATS_PORT);
-+	saddr.sin_addr.s_addr = inet_addr(LTE_STATS_ADDR);
++	saddr.sin_addr.s_addr = inet_addr(args->net_address_controller);
 +
 +	sock = socket(AF_INET, SOCK_DGRAM, 0);
 +
@@ -468,12 +489,81 @@ index a9f48b9..6e60aa7 100644
 +	close(sock);
 +		
 +	return ret;
++
++}
++
++#define SERVER  "/tmp/ble_adv_name"
++#define MAXMSG  1024
++
++int send_lte_stats_unix(char * msg, int msglen){
++
++	int sock;
++	struct sockaddr_un name;
++	int nbytes;
++	int ret=0;
++	/* Remove the filename first, it’s ok if the call fails */
++
++
++	/* Create socket from which to read. */
++	sock = socket(AF_UNIX, SOCK_DGRAM, 0);
++	if (sock < 0) {
++		perror("opening datagram socket");
++		ret=-1;
++	}
++
++
++	/* Create name. */
++	name.sun_family = AF_UNIX;
++	strcpy(name.sun_path, SERVER);
++
++
++	/* Bind the UNIX domain address to the created socket */
++/*
++	if (bind(sock, (struct sockaddr *) &name, sizeof(struct sockaddr_un))) {
++		perror("binding name to datagram socket");
++		exit(1);
++	}
++*/
++	printf("socket -->%s\n", SERVER);
++	printf("socket -->%s\n", msg);
++
++
++	nbytes = sendto (sock, msg, msglen, 0,(struct sockaddr *) & name, sizeof(name));
++	if (nbytes < 0) {
++		perror ("sendto (server)");
++		ret=-1;
++	}
++	close(sock);
++		
++	return ret;
 +}
 +
  void args_default(prog_args_t *args) {
    args->disable_plots = false; 
    args->disable_plots_except_constellation = false; 
-@@ -273,6 +303,7 @@ srslte_ue_sync_t ue_sync;
+@@ -163,7 +252,7 @@ void usage(prog_args_t *args, char *prog) {
+ void parse_args(prog_args_t *args, int argc, char **argv) {
+   int opt;
+   args_default(args);
+-  while ((opt = getopt(argc, argv, "aoglipPcOCtdDnvrfuUsS")) != -1) {
++  while ((opt = getopt(argc, argv, "aoglipPcOCtdDnvrfuUsSmH")) != -1) {
+     switch (opt) {
+     case 'i':
+       args->input_file_name = argv[optind];
+@@ -228,6 +317,12 @@ void parse_args(prog_args_t *args, int argc, char **argv) {
+     case 'v':
+       srslte_verbose++;
+       break;
++    case 'm':
++      args->ue_id = atoi(argv[optind]);
++      break;
++    case 'H':
++      args->net_address_controller = argv[optind];
++      break;
+     default:
+       usage(args, argv[0]);
+       exit(-1);
+@@ -273,6 +368,7 @@ srslte_ue_sync_t ue_sync;
  prog_args_t prog_args; 
  
  uint32_t sfn = 0; // system frame number
@@ -481,7 +571,7 @@ index a9f48b9..6e60aa7 100644
  cf_t *sf_buffer = NULL; 
  srslte_netsink_t net_sink, net_sink_signal; 
  
-@@ -460,6 +491,11 @@ int main(int argc, char **argv) {
+@@ -460,6 +556,11 @@ int main(int argc, char **argv) {
              
    INFO("\nEntering main loop...\n\n", 0);
    /* Main loop */
@@ -493,7 +583,7 @@ index a9f48b9..6e60aa7 100644
    while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
      
      ret = srslte_ue_sync_get_buffer(&ue_sync, &sf_buffer);
-@@ -552,30 +588,58 @@ int main(int argc, char **argv) {
+@@ -552,30 +653,59 @@ int main(int argc, char **argv) {
  
            // Plot and Printf
            if (srslte_ue_sync_get_sfidx(&ue_sync) == 5) {
@@ -503,24 +593,25 @@ index a9f48b9..6e60aa7 100644
                gain = 10*log10(srslte_agc_get_gain(&ue_sync.agc)); 
              }
 -            printf("CFO: %+6.2f kHz, "
-+            if (n_count==50)
++            if (n_count==100)
 +	    {
 +	       gettimeofday(&tp, NULL);
 +	       long int ss = tp.tv_sec;
 +	       long int us = tp.tv_usec;
 +	       n_count=0;
-+	       char json_str[400];
-+               sprintf(json_str," {\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f, \"timestamp\":%llu.%llu}\n",
-+            //   sprintf(json_str," {\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f}\n",
++	       char json_str[1024];
++
++               sprintf(json_str," {\"type\":\"ue%d_stats\",\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f, \"timestamp\":%llu.%llu}\n",
++		  prog_args.ue_id,
 +                  srslte_ue_sync_get_cfo(&ue_sync)/1000,
 +                  10*log10(rsrp/noise), 
 +                  100*(1-(float) ue_dl.nof_detected/nof_trials), 
 +                  (float) 100*ue_dl.pkt_errors/ue_dl.pkts_total,
 +		  ss,us);                        
-+		  //fputs(json_str, stats);
-+		  //fflush(stats);
++
 +		  puts(json_str);
-+		  send_lte_stats(json_str,sizeof(json_str));
++		  send_lte_stats(&prog_args,json_str,sizeof(json_str));
++		  send_lte_stats_unix(json_str,sizeof(json_str));
 +/*
 +               printf("CFO: %+6.2f kHz, "
                     "SNR: %4.1f dB, "
