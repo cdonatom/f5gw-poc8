@@ -8,6 +8,7 @@ import dbus
 import dbus.mainloop.glib
 from optparse import OptionParser, make_option
 import json
+import sys
 
 def device_found(address, properties):
 	val={}
@@ -23,7 +24,13 @@ def device_found(address, properties):
 			val["%s" %key]= "%s" % value
 			#print("    %s = %s" % (key, value))
 	if "lte" in str(val):
-		print(json.dumps(val))
+		lte_info=val['Name'];
+		marker,ue_id,SNR,BLER = lte_info.split(",")
+		val["UE_ID"]=ue_id
+		val["LTE_SNR"]=SNR
+		val["LTE_BLER"]=BLER
+		sys.stdout.write(str(json.dumps(val)) + '\n')
+		sys.stdout.flush()
 
 def property_changed(name, value):
 	if (name == "Discovering" and not value):
