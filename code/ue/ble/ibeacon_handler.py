@@ -81,9 +81,9 @@ def update_tx_lte_stats(x):
 				t_start=time.time()
 				t_stop=t_start;
 
-			except Exception, e:
-				print e
 			"""
+		except Exception, e:
+			print e
 
 def ibeacon_stats(iface="hci0"):
 	if not os.geteuid() == 0:
