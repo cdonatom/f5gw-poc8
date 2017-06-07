@@ -11,4 +11,8 @@ PRB=$3
 gain=90
 freq=$4 #5000e6
 
-./srsLTE/build/srslte/examples/pdsch_enodeb -a $USRP_DEV -f $freq -p $PRB -g $gain -l 0.7 -m 28 -u 2000 -b f -w $tx_pattern
+cmd="./srsLTE/build/srslte/examples/pdsch_enodeb -a $USRP_DEV -f $freq -p $PRB -g $gain -l 0.7 -m 28 -u 2000 -b f -w $tx_pattern"
+echo "-----------------"
+echo $cmd
+echo "-----------------"
+$cmd
