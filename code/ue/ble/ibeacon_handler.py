@@ -23,7 +23,7 @@ test_discovery_cmd='{}/ble/bluez-test-discovery'.format(os.getcwd())
 ibeacon_cmd='{}/ble/ibeacon'.format(os.getcwd())
 
 def run_bluez_discovery(dev):
-	discovery_timeout=1
+	discovery_timeout=3
 	global adv_name
 	ii=0
         while True:
