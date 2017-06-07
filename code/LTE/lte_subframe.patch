@@ -433,7 +433,7 @@ index fdacde8..aa8c1f2 100644
    exit(0);
  }
 diff --git a/srslte/examples/pdsch_ue.c b/srslte/examples/pdsch_ue.c
-index a9f48b9..b5c522a 100644
+index a9f48b9..25814ca 100644
 --- a/srslte/examples/pdsch_ue.c
 +++ b/srslte/examples/pdsch_ue.c
 @@ -36,6 +36,9 @@
@@ -583,7 +583,7 @@ index a9f48b9..b5c522a 100644
    while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
      
      ret = srslte_ue_sync_get_buffer(&ue_sync, &sf_buffer);
-@@ -552,30 +653,59 @@ int main(int argc, char **argv) {
+@@ -552,30 +653,60 @@ int main(int argc, char **argv) {
  
            // Plot and Printf
            if (srslte_ue_sync_get_sfidx(&ue_sync) == 5) {
@@ -601,7 +601,8 @@ index a9f48b9..b5c522a 100644
 +	       n_count=0;
 +	       char json_str[1024];
 +
-+               sprintf(json_str," {\"type\":\"ue%d_stats\",\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f, \"timestamp\":%llu.%llu}\n",
++               sprintf(json_str," {\"UE_ID\":%d,\"type\":\"ue%d_stats\",\"CFO\":%f,\"SNR\": %f, \"PDCCH-Miss\": %f, \"PDSCH-BLER\": %f, \"timestamp\":%llu.%llu}\n",
++		  prog_args.ue_id,
 +		  prog_args.ue_id,
 +                  srslte_ue_sync_get_cfo(&ue_sync)/1000,
 +                  10*log10(rsrp/noise), 
