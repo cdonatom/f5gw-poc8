@@ -19,6 +19,9 @@ TYPE='lte'
 adv_name='lte,0,0,0'
 UNIX_OUT="/tmp/ble_stats"
 
+test_discovery_cmd='{}/ble/bluez-test-discovery'.format(os.getcwd())
+ibeacon_cmd='{}/ble/ibeacon'.format(os.getcwd())
+
 def run_bluez_discovery(dev):
 	discovery_timeout=1
 	global adv_name
@@ -26,7 +29,7 @@ def run_bluez_discovery(dev):
         while True:
                 try:
 			#out=run_command_with_timeout('./bluez-test-discovery',discovery_timeout);
-			p=subprocess.Popen("timeout {} ./bluez-test-discovery".format(discovery_timeout),stdout=subprocess.PIPE,shell=True)
+			p=subprocess.Popen("timeout {1} {0}".format(test_discovery_cmd,discovery_timeout),stdout=subprocess.PIPE,shell=True)
 			out, err = p.communicate()
 			if os.path.exists(UNIX_OUT):
 				try:
@@ -39,9 +42,9 @@ def run_bluez_discovery(dev):
 
 
 
-			cmd="hciconfig {0} reset; sleep 0.2; ./ibeacon ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name)
+			cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
 			os.system(cmd)
-			cmd="hciconfig {0} reset; sleep 0.2; ./ibeacon ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name)
+			cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
 			os.system(cmd)
 
                 except KeyboardInterrupt:
