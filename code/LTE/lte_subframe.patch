@@ -1,8 +1,8 @@
 diff --git a/srslte/examples/pdsch_enodeb.c b/srslte/examples/pdsch_enodeb.c
-index fdacde8..aa8c1f2 100644
+index fdacde8..76e8b60 100644
 --- a/srslte/examples/pdsch_enodeb.c
 +++ b/srslte/examples/pdsch_enodeb.c
-@@ -98,9 +98,105 @@ srslte_netsink_t net_sink;
+@@ -98,9 +98,104 @@ srslte_netsink_t net_sink;
  int prbset_num = 1, last_prbset_num = 1; 
  int prbset_orig = 0; 
  
@@ -24,7 +24,6 @@ index fdacde8..aa8c1f2 100644
 +    int s, i, slen = sizeof(si_other) , recv_len;
 +    char buf[BUFLEN];
 +    char *p;
-+     
 +    //create a UDP socket
 +    if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 +    {
@@ -109,7 +108,7 @@ index fdacde8..aa8c1f2 100644
  #ifndef DISABLE_RF
    printf("\t-a RF args [Default %s]\n", rf_args);
    printf("\t-l RF amplitude [Default %.2f]\n", rf_amp);
-@@ -116,11 +212,17 @@ void usage(char *prog) {
+@@ -116,11 +211,17 @@ void usage(char *prog) {
    printf("\t-p nof_prb [Default %d]\n", cell.nof_prb);
    printf("\t-u listen TCP port for input data (-1 is random) [Default %d]\n", net_port);
    printf("\t-v [set srslte_verbose to debug, default none]\n");
@@ -128,7 +127,7 @@ index fdacde8..aa8c1f2 100644
      switch (opt) {
      case 'a':
        rf_args = argv[optind];
-@@ -155,6 +257,18 @@ void parse_args(int argc, char **argv) {
+@@ -155,6 +256,18 @@ void parse_args(int argc, char **argv) {
      case 'v':
        srslte_verbose++;
        break;
@@ -147,7 +146,7 @@ index fdacde8..aa8c1f2 100644
      default:
        usage(argv[0]);
        exit(-1);
-@@ -169,7 +283,6 @@ void parse_args(int argc, char **argv) {
+@@ -169,7 +282,6 @@ void parse_args(int argc, char **argv) {
  }
  
  void base_init() {
@@ -155,7 +154,7 @@ index fdacde8..aa8c1f2 100644
    /* init memory */
    sf_buffer = srslte_vec_malloc(sizeof(cf_t) * sf_n_re);
    if (!sf_buffer) {
-@@ -264,6 +377,11 @@ void base_init() {
+@@ -264,6 +376,11 @@ void base_init() {
      fprintf(stderr, "Error initiating soft buffer\n");
      exit(-1);
    }
@@ -167,7 +166,7 @@ index fdacde8..aa8c1f2 100644
  }
  
  void base_free() {
-@@ -324,12 +442,17 @@ reverse(register unsigned int x)
+@@ -324,12 +441,17 @@ reverse(register unsigned int x)
  uint32_t prbset_to_bitmask() {
    uint32_t mask=0;
    int nb = (int) ceilf((float) cell.nof_prb / srslte_ra_type0_P(cell.nof_prb));
@@ -188,7 +187,7 @@ index fdacde8..aa8c1f2 100644
  }
  
  int update_radl() {
-@@ -427,18 +550,20 @@ void *net_thread_fnc(void *arg) {
+@@ -427,18 +549,20 @@ void *net_thread_fnc(void *arg) {
        rpm += n; 
        INFO("received %d bytes. rpm=%d/%d\n",n,rpm,nbytes);
        wpm = 0; 
@@ -221,7 +220,7 @@ index fdacde8..aa8c1f2 100644
        }
      } else if (n == 0) {
        rpm = 0; 
-@@ -536,6 +661,8 @@ int main(int argc, char **argv) {
+@@ -536,6 +660,8 @@ int main(int argc, char **argv) {
    }
  #endif
  
@@ -230,7 +229,7 @@ index fdacde8..aa8c1f2 100644
    if (update_radl(sf_idx)) {
      exit(-1);
    }
-@@ -561,85 +688,120 @@ int main(int argc, char **argv) {
+@@ -561,85 +687,120 @@ int main(int argc, char **argv) {
  #ifndef DISABLE_RF
    bool start_of_burst = true; 
  #endif
@@ -423,7 +422,7 @@ index fdacde8..aa8c1f2 100644
        /* Transform to OFDM symbols */
        srslte_ofdm_tx_sf(&ifft, sf_buffer, output_buffer);
        
-@@ -664,7 +826,7 @@ int main(int argc, char **argv) {
+@@ -664,7 +825,7 @@ int main(int argc, char **argv) {
    }
  
    base_free();
@@ -433,7 +432,7 @@ index fdacde8..aa8c1f2 100644
    exit(0);
  }
 diff --git a/srslte/examples/pdsch_ue.c b/srslte/examples/pdsch_ue.c
-index a9f48b9..25814ca 100644
+index a9f48b9..e102988 100644
 --- a/srslte/examples/pdsch_ue.c
 +++ b/srslte/examples/pdsch_ue.c
 @@ -36,6 +36,9 @@
@@ -446,7 +445,7 @@ index a9f48b9..25814ca 100644
  
  #include "srslte/srslte.h"
  
-@@ -95,8 +98,94 @@ typedef struct {
+@@ -95,8 +98,129 @@ typedef struct {
    char *net_address; 
    int net_port_signal; 
    char *net_address_signal;   
@@ -492,6 +491,41 @@ index a9f48b9..25814ca 100644
 +
 +}
 +
++static pthread_t ctrl_gain_socket;
++
++#define SERVER_GAIN  "/tmp/rx_gain"
++
++void * get_rx_gain(void * arg){
++	int s;
++	struct sockaddr_un srv_un = {0};
++	if ((s = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1) {
++		perror("socket server");
++		exit(1);
++	}
++	srv_un.sun_family = AF_UNIX;
++	strncpy(srv_un.sun_path, SERVER_GAIN, sizeof(srv_un.sun_path));
++	/*If you leave the file behind when you're finished, or perhaps crash after binding, the next bind will fail
++	/ with "address in use". Which just means, the file is already there.*/
++	unlink(srv_un.sun_path);
++
++	if (bind(s, (struct sockaddr *)&srv_un, sizeof(srv_un)) == -1) {
++		perror("bind server");
++		exit(1);
++	}
++	srslte_rf_t  * rf=(srslte_rf_t *) arg;
++	for(;;) {
++		char buf[1024] = {0};
++		read(s, buf, sizeof(buf));
++		int vv=atoi(buf);
++		printf("RECEIVED: %s : %d\n", buf,vv);
++		pthread_mutex_lock(&rf->mutex);
++                rf->hide_channel=vv;
++		pthread_mutex_unlock(&rf->mutex);
++		
++	}
++	close(s);
++}
++
 +#define SERVER  "/tmp/ble_adv_name"
 +#define MAXMSG  1024
 +
@@ -524,8 +558,8 @@ index a9f48b9..25814ca 100644
 +		exit(1);
 +	}
 +*/
-+	printf("socket -->%s\n", SERVER);
-+	printf("socket -->%s\n", msg);
++//	printf("socket -->%s\n", SERVER);
++//	printf("socket -->%s\n", msg);
 +
 +
 +	nbytes = sendto (sock, msg, msglen, 0,(struct sockaddr *) & name, sizeof(name));
@@ -541,7 +575,7 @@ index a9f48b9..25814ca 100644
  void args_default(prog_args_t *args) {
    args->disable_plots = false; 
    args->disable_plots_except_constellation = false; 
-@@ -163,7 +252,7 @@ void usage(prog_args_t *args, char *prog) {
+@@ -163,7 +287,7 @@ void usage(prog_args_t *args, char *prog) {
  void parse_args(prog_args_t *args, int argc, char **argv) {
    int opt;
    args_default(args);
@@ -550,7 +584,7 @@ index a9f48b9..25814ca 100644
      switch (opt) {
      case 'i':
        args->input_file_name = argv[optind];
-@@ -228,6 +317,12 @@ void parse_args(prog_args_t *args, int argc, char **argv) {
+@@ -228,6 +352,12 @@ void parse_args(prog_args_t *args, int argc, char **argv) {
      case 'v':
        srslte_verbose++;
        break;
@@ -563,7 +597,7 @@ index a9f48b9..25814ca 100644
      default:
        usage(args, argv[0]);
        exit(-1);
-@@ -273,6 +368,7 @@ srslte_ue_sync_t ue_sync;
+@@ -273,6 +403,7 @@ srslte_ue_sync_t ue_sync;
  prog_args_t prog_args; 
  
  uint32_t sfn = 0; // system frame number
@@ -571,7 +605,20 @@ index a9f48b9..25814ca 100644
  cf_t *sf_buffer = NULL; 
  srslte_netsink_t net_sink, net_sink_signal; 
  
-@@ -460,6 +556,11 @@ int main(int argc, char **argv) {
+@@ -341,6 +472,12 @@ int main(int argc, char **argv) {
+     printf("Tunning receiver to %.3f MHz\n", prog_args.rf_freq/1000000);
+     srslte_rf_set_rx_freq(&rf, prog_args.rf_freq);
+     srslte_rf_rx_wait_lo_locked(&rf);
++//    rf.hide_channel=false;
++
++    if(pthread_create(&ctrl_gain_socket, NULL, get_rx_gain , (srslte_rf_t *)&rf)) {
++      fprintf(stderr, "Error creating thread\n");
++      return 1;
++    }
+ 
+     uint32_t ntrial=0; 
+     do {
+@@ -460,6 +597,11 @@ int main(int argc, char **argv) {
              
    INFO("\nEntering main loop...\n\n", 0);
    /* Main loop */
@@ -583,7 +630,7 @@ index a9f48b9..25814ca 100644
    while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
      
      ret = srslte_ue_sync_get_buffer(&ue_sync, &sf_buffer);
-@@ -552,30 +653,60 @@ int main(int argc, char **argv) {
+@@ -552,30 +694,60 @@ int main(int argc, char **argv) {
  
            // Plot and Printf
            if (srslte_ue_sync_get_sfidx(&ue_sync) == 5) {
@@ -610,7 +657,7 @@ index a9f48b9..25814ca 100644
 +                  (float) 100*ue_dl.pkt_errors/ue_dl.pkts_total,
 +		  ss,us);                        
 +
-+		  puts(json_str);
++//		  puts(json_str);
 +		  send_lte_stats(&prog_args,json_str,sizeof(json_str));
 +		  send_lte_stats_unix(json_str,sizeof(json_str));
 +/*
@@ -647,3 +694,56 @@ index a9f48b9..25814ca 100644
          } 
        }
        
+diff --git a/srslte/include/srslte/rf/rf.h b/srslte/include/srslte/rf/rf.h
+index fd49f7d..8230aca 100644
+--- a/srslte/include/srslte/rf/rf.h
++++ b/srslte/include/srslte/rf/rf.h
+@@ -46,6 +46,7 @@ typedef struct {
+   double new_rx_gain;   
+   bool   tx_gain_same_rx; 
+   float  tx_rx_gain_offset; 
++  int    hide_channel;
+ } srslte_rf_t;
+ 
+ typedef struct {
+diff --git a/srslte/lib/rf/rf_imp.c b/srslte/lib/rf/rf_imp.c
+index fe93d0e..bd45226 100644
+--- a/srslte/lib/rf/rf_imp.c
++++ b/srslte/lib/rf/rf_imp.c
+@@ -57,13 +57,25 @@ void srslte_rf_set_tx_rx_gain_offset(srslte_rf_t *rf, double offset) {
+ /* This thread listens for set_rx_gain commands to the USRP */
+ static void* thread_gain_fcn(void *h) {
+   srslte_rf_t* rf = (srslte_rf_t*) h;
+-  
+   while(1) {
+     pthread_mutex_lock(&rf->mutex);
++
++    if (rf->hide_channel > 0){
++      rf->new_rx_gain=(float)rf->hide_channel;
++      rf->cur_rx_gain = rf->new_rx_gain; 
++      srslte_rf_set_rx_gain(h, rf->cur_rx_gain);
++      srslte_rf_set_tx_gain(h, rf->cur_rx_gain+rf->tx_rx_gain_offset);
++      
++    }
++//    printf("cur_rx_gain=%.2f \t %.2f \t %d\n",rf->cur_rx_gain, rf->new_rx_gain, rf->hide_channel );
++    
++
++  
+     while(rf->cur_rx_gain == rf->new_rx_gain) 
+     {
+       pthread_cond_wait(&rf->cond, &rf->mutex);
+     }
++
+     if (rf->new_rx_gain != rf->cur_rx_gain) {
+       rf->cur_rx_gain = rf->new_rx_gain; 
+       srslte_rf_set_rx_gain(h, rf->cur_rx_gain);
+@@ -71,7 +83,9 @@ static void* thread_gain_fcn(void *h) {
+     if (rf->tx_gain_same_rx) {
+       srslte_rf_set_tx_gain(h, rf->cur_rx_gain+rf->tx_rx_gain_offset);
+     }
++
+     pthread_mutex_unlock(&rf->mutex);
++  
+   }
+   return NULL; 
+ }
