@@ -277,127 +277,130 @@ class Adder(ttk.Frame):
         self.stopUSRPBtn.state(['pressed', 'disabled'])
 	self.Frequency.configure(state='normal')
 	self.WindowSize.configure(state='normal')
+    def set_xy(self,thr,DT,x,y):
+	xx=[]
+	yy=[]
+
+	xx = list( numpy.array(x) + DT)
+	xx.insert(0,0)
+	xx=xx[0:self.Nplot]
+
+	y.append( numpy.nan_to_num( thr ) )
+	yy=y[::-1]
+	yy=yy[0:self.Nplot]
+	yy=yy[::-1]
+	return xx,yy
 
     def loop_statistics(self,x):
 	init_plot_success_rate=True;
 	init_plot_iperf=True;
-	global line1_psucc_wifi;
+	global line_psucc_wifi;
 	alpha=0.7
 	psucc=0;
 	psucc_=0
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((IP_CONTROLLER,AP_TO_CTRL_PORT))
+
 	t0_ue1_stats=time.time()
 	t1_ue1_stats=time.time()
+
+	t0_iperf_ue1=time.time()
+	t1_iperf_ue1=time.time()
+
 	t0_ue2_stats=time.time()
 	t1_ue2_stats=time.time()
+
+	t0_iperf_ue2=time.time()
+	t1_iperf_ue2=time.time()
+
 	t0_ue3_stats=time.time()
 	t1_ue3_stats=time.time()
+
+	t0_iperf_ue3=time.time()
+	t1_iperf_ue3=time.time()
+
 	while True:
 		try:
 			data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
 			stats=json.loads(data)
 			print stats
 			if stats['type']=='iperf_wmp':
+				t1_iperf_ue3=time.time()
+				DT=t1_iperf_ue3-t0_iperf_ue3
+				t0_iperf_ue3=time.time()
 				try:
-					print data
-					thr=float(stats.get('thr'))*100/(4.87*1e6)
+					thr=float(stats.get('thr'))*100/(4.30*1e6)
 					if numpy.isnan(thr):
 						thr=float(0);
-					self.yval_thr_wmp.append( numpy.nan_to_num( thr ) )
-					yy=self.yval_thr_wmp[::-1]
-					yy=yy[0:self.Nplot]
-					self.yval_thr_wmp=yy[::-1]
-
-
-
+					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr,DT,self.xval_thr_wmp,self.yval_thr_wmp)
+						
 				except Exception as e:
 					print e
+
 			if stats['type']=='iperf_ue1':
-				print "here!"
+				t1_iperf_ue1=time.time()
+				DT=t1_iperf_ue1-t0_iperf_ue1
+				t0_iperf_ue1=time.time()
 				try:
 					thr=float(stats.get('thr'))*100/(15*1e6)
-					print thr
 					if numpy.isnan(thr):
 						thr=float(0);
-					self.yval_thr_ue1.append( numpy.nan_to_num( thr ) )
-					yy=self.yval_thr_ue1[::-1]
-					yy=yy[0:self.Nplot]
-					self.yval_thr_ue1=yy[::-1]
+					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr,DT,self.xval_thr_ue1,self.yval_thr_ue1)
+						
+				except Exception as e:
+					print e
+
+			if stats['type']=='iperf_ue2':
+				t1_iperf_ue2=time.time()
+				DT=t1_iperf_ue2-t0_iperf_ue2
+				t0_iperf_ue2=time.time()
+				try:
+					thr=float(stats.get('thr'))*100/(15*1e6)
+					if numpy.isnan(thr):
+						thr=float(0);
+					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr,DT,self.xval_thr_ue2,self.yval_thr_ue2)
+						
 				except Exception as e:
 					print e
 
 			if stats['type']=='ue1_stats':
 				t1_ue1_stats=time.time()
+				DT=t1_ue1_stats-t0_ue1_stats
+				t0_ue1_stats=time.time()
 				try:
 					bler_ue1=stats.get('PDSCH-BLER')/float(100)
 
 					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue1)))
-					if (t1_ue1_stats-t0_ue1_stats) > 1:
-						iiter=int(round(t1_ue1_stats-t0_ue1_stats))
-						print iiter
-						for iii in range(0,iiter):
-							self.yval_blsucc_lte_ue1.append( 1 - bler_ue1 )
-						t0_ue1_stats=time.time();
-					else:
-						self.yval_blsucc_lte_ue1.append( 1 - bler_ue1 )
-						t1_ue1_stats=time.time();
-					t0_ue1_stats=time.time();
-
-					yy=self.yval_blsucc_lte_ue1[::-1]
-					yy=yy[0:self.Nplot]
-					self.yval_blsucc_lte_ue1=yy[::-1]
-
+					self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1=self.set_xy((1-bler_ue1),DT,self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1)
 
 				except Exception as e:
 					print e
 
 			if stats['type']=='ue2_stats':
 				t1_ue2_stats=time.time()
+				DT=t1_ue2_stats-t0_ue2_stats
+				t0_ue2_stats=time.time()
 				try:
 					bler_ue2=stats.get('PDSCH-BLER')/float(100)
-					if (t1_ue2_stats-t0_ue2_stats) > 1:
-						iiter=int(round(t1_ue2_stats-t0_ue2_stats))
-						for iii in range(0,iiter):
-							self.yval_blsucc_lte_ue2.append( 1 - bler_ue2 )
-						t0_ue2_stats=time.time();
-					else:
-						self.yval_blsucc_lte_ue2.append( 1 - bler_ue2 )
-						t1_ue2_stats=time.time();
-					t0_ue2_stats=time.time();
 
-					yy=self.yval_blsucc_lte_ue2[::-1]
-					yy=yy[0:self.Nplot]
-					self.yval_blsucc_lte_ue2=yy[::-1]
-
+					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue2)))
+					self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2=self.set_xy((1-bler_ue2),DT,self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2)
 
 				except Exception as e:
 					print e
 
 			if stats['type']=='ue3_stats':
 				t1_ue3_stats=time.time()
+				DT=t1_ue3_stats-t0_ue3_stats
+				t0_ue3_stats=time.time()
 				try:
-					t_last=time.time()
 					psucc=float(stats.get('psucc'));
 					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
 					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
 					if numpy.isnan(psucc):
 						psucc=float(0);
 
-					if (t1_ue3_stats-t0_ue3_stats) > 1:
-						iiter=int(round(t1_ue3_stats-t0_ue3_stats))
-						for iii in range(0,iiter):
-							self.yval_psucc_wifi.append(numpy.nan_to_num( psucc ) )
-						t0_ue3_stats=time.time();
-					else:
-						self.yval_psucc_wifi.append(numpy.nan_to_num( psucc ) )
-						t1_ue3_stats=time.time();
-					t0_ue3_stats=time.time();
-
-					yy=self.yval_psucc_wifi[::-1]
-					yy=yy[0:self.Nplot]
-					self.yval_psucc_wifi=yy[::-1]
-
+					self.xval_psucc_wifi,self.yval_psucc_wifi=self.set_xy(psucc,DT,self.xval_psucc_wifi,self.yval_psucc_wifi)
 
 				except Exception as e:
 					print e
@@ -405,6 +408,11 @@ class Adder(ttk.Frame):
 			if stats['type']=='iperf_ue1' or stats['type']=='iperf_ue2' or stats['type']=='iperf_wmp':
 				try:
 					thr_aggr = numpy.array(self.yval_thr_ue1[::-1]) + numpy.array(self.yval_thr_wmp[::-1])
+#					print "X={}".format(len(self.xval_thr_ue1[0:self.Nplot]))
+#					print "X={}".format(-1*numpy.array(self.xval_thr_ue1[0:self.Nplot]))
+#					print "X={}".format(-1*numpy.array(self.xval))
+#					print "Y={}".format(len(self.yval_thr_ue1[::-1]))
+#					print "Y={}".format(self.yval_thr_ue1[::-1])
 					if init_plot_iperf:
 						f_iperf = Figure(figsize=(10.5,2.2), dpi=100)
 						ax = f_iperf.add_subplot(111)
@@ -413,14 +421,11 @@ class Adder(ttk.Frame):
 						ax.set_ylabel('Throughput')
 
 						self.tick=(self.tick+1) % self.Nplot
-						#line1_thr_wmp, = ax.plot(self.xval,self.yval_thr_wmp[::-1],label="WMP THR")
-						#line2_thr_ue1,   = ax.plot(self.xval,self.yval_thr_ue1[::-1],label="UE1 THR")
-						#line3_thr_ue2,   = ax.plot(self.xval,self.yval_thr_ue2[::-1],label="UE2 THR")
-						line1_thr_wmp, = ax.plot(-1*numpy.array(self.xval),self.yval_thr_wmp[::-1],label="WMP THR")
-						line2_thr_ue1,   = ax.plot(-1*numpy.array(self.xval),self.yval_thr_ue1[::-1],label="UE1 THR")
-						line3_thr_ue2,   = ax.plot(-1*numpy.array(self.xval),self.yval_thr_ue2[::-1],label="UE2 THR")
-#						line4_thr_aggr, = ax.plot(-1*numpy.array(self.xval),thr_aggr[::-1],label="AGGREGATE")
+						line_thr_wmp, = ax.plot(-1*numpy.array(self.xval),self.yval_thr_wmp[::-1],label="WMP THR")
+						line_thr_ue1,   = ax.plot(-1*numpy.array(self.xval_thr_ue1),self.yval_thr_ue1[::-1],label="UE1 THR")
+						line_thr_ue2,   = ax.plot(-1*numpy.array(self.xval_thr_ue2),self.yval_thr_ue2[::-1],label="UE2 THR")
 						ax.set_ylim([0, 100])
+						ax.set_xlim([-1*600, 0])
 						ax.patch.set_facecolor('white')
 						f_iperf.set_facecolor('white')
 
@@ -430,14 +435,13 @@ class Adder(ttk.Frame):
 						canvas.get_tk_widget().grid(column=1, row=3, columnspan=1, sticky='nesw')
 						ax.legend(loc="lower left")
 					else: 
-						line1_thr_wmp.set_ydata(self.yval_thr_wmp[::-1])
-						line2_thr_ue1.set_ydata(self.yval_thr_ue1[::-1])
-						line3_thr_ue2.set_ydata(self.yval_thr_ue2[::-1])
-						#line4_thr_aggr.set_ydata(thr_aggr)
-						#line1_thr_wmp.set_ydata(self.yval_thr_wmp)
-						#line2_thr_ue1.set_ydata(self.yval_thr_ue1)
-						#line3_thr_ue2.set_ydata(self.yval_thr_ue2)
-						#line4_thr_aggr.set_ydata(thr_aggr[::-1])
+						line_thr_wmp.set_ydata(self.yval_thr_wmp[::-1])
+
+						line_thr_ue1.set_ydata(self.yval_thr_ue1[::-1])
+						line_thr_ue1.set_xdata(-1*numpy.array(self.xval_thr_ue1))
+
+						line_thr_ue2.set_ydata(self.yval_thr_ue2[::-1])
+						line_thr_ue2.set_xdata(-1*numpy.array(self.xval_thr_ue2))
 						f_iperf.canvas.draw()
 
 					init_plot_iperf = False;
@@ -455,9 +459,9 @@ class Adder(ttk.Frame):
 						ax.set_ylabel('SUCCESS RATE')
 
 						self.tick=(self.tick+1) % self.Nplot
-						line1_psucc_wifi, = ax.plot(-1*numpy.array(self.xval),self.yval_psucc_wifi[::-1],label="WIFI success rate")
-
-						line2_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval),self.yval_blsucc_lte_ue1[::-1],label="LTE Block success rate")
+						line_psucc_wifi,     = ax.plot(-1*numpy.array(self.xval_psucc_wifi)    ,self.yval_psucc_wifi[::-1]    ,label="WIFI success rate")
+						line_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue1),self.yval_blsucc_lte_ue1[::-1],label="LTE Block success rate UE1")
+						line_bler_lte_ue2,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue2),self.yval_blsucc_lte_ue2[::-1],label="LTE Block success rate UE2")
 						ax.set_ylim([0, 1])
 						ax.patch.set_facecolor('white')
 						f.set_facecolor('white')
@@ -468,8 +472,8 @@ class Adder(ttk.Frame):
 						canvas.get_tk_widget().grid(column=1, row=4, columnspan=1, sticky='nesw')
 						ax.legend(loc="lower left")
 					else: 
-						line1_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
-						line2_bler_lte_ue1.set_ydata(self.yval_blsucc_lte_ue1[::-1])
+						line_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
+						line_bler_lte_ue1.set_ydata(self.yval_blsucc_lte_ue1[::-1])
 						f.canvas.draw()
 
 					init_plot_success_rate = False;
@@ -520,8 +524,8 @@ class Adder(ttk.Frame):
 				ax.set_ylabel('SUCCESS RATE')
 
 				self.tick=(self.tick+1) % self.Nplot
-				line1_psucc_wifi, = ax.plot(self.xval,self.yval_psucc_wifi[::-1],label="WIFI success rate")
-				#line2_bler_lte,   = ax.plot(self.xval,self.yval_bler_lte[::-1],label="LTE Block success rate")
+				line_psucc_wifi, = ax.plot(self.xval,self.yval_psucc_wifi[::-1],label="WIFI success rate")
+				#line_bler_lte,   = ax.plot(self.xval,self.yval_bler_lte[::-1],label="LTE Block success rate")
 				ax.set_ylim([0, 1])
 				ax.patch.set_facecolor('white')
 				f.set_facecolor('white')
@@ -532,8 +536,8 @@ class Adder(ttk.Frame):
 				canvas.get_tk_widget().grid(column=1, row=3, columnspan=1, sticky='nesw')
 				ax.legend(loc="lower right")
 			else: 
-				line1_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
-				#line2_bler_lte.set_ydata(self.yval_bler_lte[::-1])
+				line_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
+				#line_bler_lte.set_ydata(self.yval_bler_lte[::-1])
 				f.canvas.draw()
 
 			init_plot = False;
@@ -584,6 +588,19 @@ class Adder(ttk.Frame):
 			pass
 		time.sleep(1)
 
+    def init_yvals(self):
+	self.yval_thr_wmp=[0 for x in range(0,self.Nplot)]
+	self.xval_thr_wmp=[x for x in range(0,self.Nplot)]
+	self.yval_thr_ue1=[0 for x in range(0,self.Nplot)]
+	self.xval_thr_ue1=[x for x in range(0,self.Nplot)]
+	self.yval_thr_ue2=[0 for x in range(0,self.Nplot)]
+	self.xval_thr_ue2=[x for x in range(0,self.Nplot)]
+	self.yval_psucc_wifi=[0 for x in range(0,self.Nplot)]
+	self.xval_psucc_wifi=[x for x in range(0,self.Nplot)]
+	self.yval_blsucc_lte_ue1=[0 for x in range(0,self.Nplot)]
+	self.xval_blsucc_lte_ue1=[x for x in range(0,self.Nplot)]
+	self.yval_blsucc_lte_ue2=[0 for x in range(0,self.Nplot)]
+	self.xval_blsucc_lte_ue2=[x for x in range(0,self.Nplot)]
 
     def init_gui(self):
 
@@ -680,6 +697,8 @@ class Adder(ttk.Frame):
 
 #        self.killControllerLTEBtn = ttk.Button(self.traffic_frame, text="KILL", width=15, command=self.killControllerLTE,  style=SUNKABLE_BUTTON)
 #        self.killControllerLTEBtn.grid(row=2, column=4, padx=15, pady=15, ipady=2, sticky=W)
+        self.killControllerLTEBtn = ttk.Button(self.traffic_frame, text="CLEAN PLOTS", width=15, command=self.init_yvals,  style=SUNKABLE_BUTTON)
+        self.killControllerLTEBtn.grid(row=2, column=4, padx=15, pady=15, ipady=2, sticky=W)
 	# Statistics Frame
 	
 	self.stats_frame = ttk.LabelFrame(self, text='Monitor info', height=100, width=100)
@@ -723,14 +742,7 @@ class Adder(ttk.Frame):
 
 #        self.loopUSRPCapture()
 	self.Nplot=600
-	self.yval_thr_wmp=[0 for x in range(0,self.Nplot)]
-	self.xval_thr_wmp=[x for x in range(0,self.Nplot)]
-	self.yval_thr_ue1=[0 for x in range(0,self.Nplot)]
-	self.yval_thr_ue2=[0 for x in range(0,self.Nplot)]
-	self.yval_psucc_wifi=[0 for x in range(0,self.Nplot)]
-	self.xval_psucc_wifi=[x for x in range(0,self.Nplot)]
-	self.yval_blsucc_lte_ue1=[0 for x in range(0,self.Nplot)]
-	self.yval_bler_lte_ue2=[0 for x in range(0,self.Nplot)]
+        self.init_yvals()
 	self.xval=[x for x in range(0,self.Nplot)]
 	self.tick=0;
         # ttk.Separator(self, orient='horizontal').grid(column=0,
