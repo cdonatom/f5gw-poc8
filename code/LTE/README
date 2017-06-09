@@ -1,0 +1,16 @@
+
+#INSTALL
+sh install.sh
+# AFTER SOME HACKS you can rebuild with:
+sh rebuild.sh
+
+# RUN ENB
+sudo ./srsLTE/build/srslte/examples/pdsch_enodeb -a "serial=30AD345" -f 2437e6 -p 25 -g 90 -l 0.7 -m 27 -u 2000 -b f -w 1,1,1,1,1,1,0,0,0,0
+
+#RUN UE
+./srsLTE/build/srslte/examples/pdsch_ue -a serial=30AD308 -f 2437e6 -r 1234 -u 2001 -U 127.0.0.1
+
+# RUN SERVER
+iperf -s -p 2001 -i2
+# RUN CLIENT
+iperf -c 127.0.0.1 -p 2000 -i 1 -t 100000
