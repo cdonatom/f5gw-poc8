@@ -14,15 +14,18 @@
 #define FWD_D2D_PORT    2003
 #define THREADS_NUM     2
 #define BUFFER_SIZE     1450
+#define MAX_PKTS        2048
 
 pthread_t               t_id [THREADS_NUM]; //ids for threads
 pthread_cond_t          tx_cond [THREADS_NUM];
 pthread_mutex_t         mutex [THREADS_NUM];
 
-char                    recv_buff [BUFFER_SIZE]; //shared variable. Read-only.
-int                     sockfd[THREADS_NUM+1]; // Close all sockets when prgm is interrupted
-int                     bytes = 0; //shared variable. Read-only
-int                     data_available[THREADS_NUM]; //conditional variable
+char                    recv_buff[MAX_PKTS][BUFFER_SIZE]; //shared variable. Read-only.
+unsigned int            sockfd[THREADS_NUM+1]; // Close all sockets when prgm is interrupted
+unsigned int            bytes[MAX_PKTS]; //shared variable. Read-only
+unsigned int            data_available[THREADS_NUM]; //conditional variable
+unsigned int            last_write = 0; //main thread writes
+int                     pkts_read[THREADS_NUM][MAX_PKTS];
 
 typedef struct input_thread
 {
@@ -32,7 +35,8 @@ typedef struct input_thread
 } 
 input_t;
 
-void intHandler() {
+void intHandler() 
+{
     unsigned int i = 0;
     void *status;
 
@@ -52,8 +56,13 @@ void intHandler() {
 void * send_data(void *input_args)
 {
     input_t * args = (input_t*)input_args;
-    char buff [BUFFER_SIZE];
-    int buff_bytes = 0;
+    char buff [MAX_PKTS][BUFFER_SIZE];
+    int buff_bytes[MAX_PKTS];
+
+    int last_read = 0;
+    int last_write_cpy = 0;
+    int i = 0;
+    int counter = 0;
 
     if( (connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
         sizeof(args->serv_addr))) < 0)
@@ -77,21 +86,58 @@ void * send_data(void *input_args)
             printf("Thread %i | Waiting\n", args->id);
             pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
         }
-       
-        memcpy((char*)buff, recv_buff, BUFFER_SIZE*sizeof(char));
-        data_available[args->id] = 0;
-        buff_bytes = bytes;
 
+        last_write_cpy = last_write;
+        counter = 0;
+        if ( last_read > last_write_cpy ) //Start again
+        {
+            for (i = last_read; i <= MAX_PKTS; i++)
+            {
+                if( i == MAX_PKTS )
+                {
+                    i = 0;
+                }
+                
+                memcpy((char*)buff[counter], recv_buff[i], BUFFER_SIZE*sizeof(char));
+                buff_bytes[counter] = bytes[i];
+                pkts_read[args->id][i] = 1;
+                last_read = i;
+                counter++;
+                if ( i == last_write_cpy)
+                {
+                    i = MAX_PKTS+1;
+                }
+            }
+        }
+        else
+        {
+            for (i = last_read; i <= last_write_cpy; i++)
+            {
+                if( i == MAX_PKTS )
+                {
+                    i = 0;
+                }
+                memcpy((char*)buff[counter], recv_buff[i], BUFFER_SIZE*sizeof(char));
+                buff_bytes[counter] = bytes[i];
+                pkts_read[args->id][i] = 1;
+                last_read = i;
+                counter++;
+            }
+        }
+        
+        data_available[args->id] = 0;
         // End of critical section
         pthread_mutex_unlock(&mutex [args->id]);
         printf("Thread %i | Unlock mutex\n", args->id);
         //printf("Thread %i | Sending packet: %i bytes\n", args->id, buff_bytes);
-        sendto(args->sockfd, buff, buff_bytes, 0, NULL, 0);
-        
-        if (bytes <= 0)
+        for (i = 0; i <= counter; i++)
         {
-            pthread_exit(0);
-        }
+            if (buff_bytes[i] <= 0)
+            {
+                pthread_exit(0);
+            }
+            sendto(args->sockfd, buff[i], buff_bytes[i], 0, NULL, 0);
+        }     
     }
 } 
 
@@ -109,7 +155,7 @@ int main (int argc, char *argv[])
 
     sockfd[THREADS_NUM] = socket(AF_INET, SOCK_STREAM, 0);
     memset(&addrs[THREADS_NUM], '0', sizeof(struct sockaddr));
-    memset(recv_buff, '0', sizeof(recv_buff)); 
+    memset(recv_buff, '0', sizeof(recv_buff));
 
     addrs[THREADS_NUM].sin_family = AF_INET;
     addrs[THREADS_NUM].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -145,12 +191,14 @@ int main (int argc, char *argv[])
         pthread_mutex_init (&mutex[i], NULL);
         pthread_cond_init(&tx_cond[i], NULL);
         data_available[i] = 0;
+        last_write = 0;
 
         memcpy((struct sockaddr*)&(thread_input[i].serv_addr), (struct sockaddr*) &addrs[i], 
                     sizeof(struct sockaddr));
         sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
         thread_input[i].sockfd = sockfd[i];
         thread_input[i].id = i;
+        memset((void*) pkts_read[i], 0, MAX_PKTS*sizeof(int));
 
         printf("In main: creating thread %i\n", i);
         rc = pthread_create(&t_id[i], NULL, send_data, (input_t *)&thread_input[i]);
@@ -174,7 +222,8 @@ int main (int argc, char *argv[])
 
     struct sockaddr_in* addr = (struct sockaddr_in*) &(addrs[THREADS_NUM]);
     printf("Main Thread | Connected to %s\n", inet_ntoa(addr->sin_addr));
- 
+    int writing_counter = -1;
+
     while(1)
     {
         // Lock all mutex
@@ -185,9 +234,17 @@ int main (int argc, char *argv[])
             printf("Main Thread | Lock mutex %i\n", i);
         }
         
-        memset(recv_buff, '0', sizeof(recv_buff));
+        if (writing_counter == (MAX_PKTS - 1) )
+        {
+            writing_counter = -1;
+        }
 
-        if ((bytes = recv(connfd, recv_buff, sizeof(recv_buff)-1, 0)) <= 0)
+        writing_counter++;
+        last_write = writing_counter;
+        
+        memset((void*) recv_buff[writing_counter], 0, sizeof(recv_buff));
+
+        if ((bytes[writing_counter] = recv(connfd, recv_buff[writing_counter], sizeof(char)*BUFFER_SIZE, 0)) <= 0)
         {
             printf("Main Thread | recv(): %s\n", strerror(errno));
             intHandler();
@@ -196,7 +253,9 @@ int main (int argc, char *argv[])
         {
             printf("Main Thread | Received %i bytes\n", bytes);
         }
-      */          
+      */ 
+        
+                
         for (i = 0; i < THREADS_NUM; i++)
         {
             data_available[i] = 1;
