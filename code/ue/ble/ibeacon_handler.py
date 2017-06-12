@@ -22,30 +22,42 @@ UNIX_OUT="/tmp/ble_stats"
 test_discovery_cmd='{}/ble/bluez-test-discovery'.format(os.getcwd())
 ibeacon_cmd='{}/ble/ibeacon'.format(os.getcwd())
 
-def run_bluez_discovery(dev):
+def run_bluez_discovery(dev,mode):
 	discovery_timeout=3
 	global adv_name
 	ii=0
+	if mode=='scan':
+		scan=True
+		send_ibeacon=False
+	elif mode=='send':
+		scan=False
+		send_ibeacon=True
+	elif mode=='' or mode=='mixed':
+		scan=True
+		send_ibeacon=True
         while True:
                 try:
 			#out=run_command_with_timeout('./bluez-test-discovery',discovery_timeout);
-			p=subprocess.Popen("timeout {1} {0}".format(test_discovery_cmd,discovery_timeout),stdout=subprocess.PIPE,shell=True)
-			out, err = p.communicate()
-			if os.path.exists(UNIX_OUT):
-				try:
-					client = socket.socket( socket.AF_UNIX, socket.SOCK_DGRAM )
-					client.connect(UNIX_OUT)
-					client.send(str(out))
-					client.close()
-				except Exception, e:
-					print e
+			if scan:
+				print "SCAN"
+				p=subprocess.Popen("timeout {1} {0}".format(test_discovery_cmd,discovery_timeout),stdout=subprocess.PIPE,shell=True)
+				out, err = p.communicate()
+				if os.path.exists(UNIX_OUT):
+					try:
+						client = socket.socket( socket.AF_UNIX, socket.SOCK_DGRAM )
+						client.connect(UNIX_OUT)
+						client.send(str(out))
+						client.close()
+					except Exception, e:
+						print e
 
 
-
-			cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
-			os.system(cmd)
-			cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
-			os.system(cmd)
+			if send_ibeacon:
+				print "SEND IBEACON"
+				cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
+				os.system(cmd)
+				cmd="hciconfig {0} reset; sleep 0.2; {2} ; sleep 0.2; hciconfig {0} name '{1}'".format(dev,adv_name,ibeacon_cmd)
+				os.system(cmd)
 
                 except KeyboardInterrupt:
                         # quit
@@ -88,13 +100,13 @@ def update_tx_lte_stats(x):
 		except Exception, e:
 			print e
 
-def ibeacon_stats(iface="hci0"):
+def ibeacon_stats(iface="hci0",mode='mixed'):
 	if not os.geteuid() == 0:
 	    sys.exit('Script must be run as root')
 	print "---------------------------------------"
 	print "UDP output on unix socket".format(UNIX_OUT)
 	print "---------------------------------------"
-	thread.start_new_thread(run_bluez_discovery,(iface,))
+	thread.start_new_thread(run_bluez_discovery,(iface,mode))
 	thread.start_new_thread(update_tx_lte_stats,(-1,))
 	while True:
 		time.sleep(1)

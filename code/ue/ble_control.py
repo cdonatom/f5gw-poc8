@@ -5,7 +5,7 @@ import os
 import socket
 import json
 
-thread.start_new_thread(ibeacon_stats,('hci0',))
+thread.start_new_thread(ibeacon_stats,('hci0','mixed'))
 
 if os.path.exists( "/tmp/ble_stats" ):
   os.remove( "/tmp/ble_stats" )
@@ -25,13 +25,17 @@ while True:
     #got BLE data consume it...
     try:
       data=json.loads(datagram)
-      if data['RSSI']:
-	  if first_round:
-		rssi_av=data['RSSI']
-		first_round=False
-	  else:
-		rssi_av=alpha*float(data['RSSI'])+(1-alpha)*float(rssi_av)
-          print "rssi_av={} rssi_now={}".format(rssi_av,data['RSSI'])
+      if "lte" in str(data):
+	      print "LTE={}".format(data)
+	      if data['RSSI']:
+		  if first_round:
+			rssi_av=data['RSSI']
+			first_round=False
+		  else:
+			rssi_av=alpha*float(data['RSSI'])+(1-alpha)*float(rssi_av)
+		  print "rssi_av={} rssi_now={}".format(rssi_av,data['RSSI'])
+      else:
+       	      print "ibeacon not contains LTE stats"
     except Exception, e:
       print e
       continue
