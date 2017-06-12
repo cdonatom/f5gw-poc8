@@ -12,8 +12,11 @@
 #define LOCAL_PORT      2001
 #define FWD_LTE_PORT    2002
 #define FWD_D2D_PORT    2003
-#define THREADS_NUM     2
-#define BUFFER_SIZE     1450
+#define TRIGGER_PORT    2004
+
+#define THREADS_NUM     1
+#define SOCKS_NUM       3
+#define BUFFER_SIZE     1460
 #define MAX_PKTS        2048
 
 pthread_t               t_id [THREADS_NUM]; //ids for threads
@@ -21,10 +24,10 @@ pthread_cond_t          tx_cond [THREADS_NUM];
 pthread_mutex_t         mutex [THREADS_NUM];
 
 char                    recv_buff[MAX_PKTS][BUFFER_SIZE]; //shared variable. Read-only.
-unsigned int            sockfd[THREADS_NUM+1]; // Close all sockets when prgm is interrupted
+unsigned int            sockfd[SOCKS_NUM]; // Close all sockets when prgm is interrupted
 unsigned int            bytes[MAX_PKTS]; //shared variable. Read-only
 unsigned int            data_available[THREADS_NUM]; //conditional variable
-unsigned int            last_write = 0; //main thread writes
+unsigned int            last_write; //main thread writes
 int                     pkts_read[THREADS_NUM][MAX_PKTS];
 
 typedef struct input_thread
@@ -38,17 +41,19 @@ input_t;
 void intHandler() 
 {
     unsigned int i = 0;
-    void *status;
 
     for (i = 0; i < THREADS_NUM; i++)
-    {
-        close(sockfd[i]);
+    {  
         pthread_mutex_destroy(&mutex[i]);
         pthread_cond_destroy(&tx_cond[i]);
-        pthread_join(t_id[i], &status);
+        pthread_cancel(t_id[i]);
     }
-    close(sockfd[THREADS_NUM]);
-    printf("\nClear! \n");
+
+    for (i=0; i < SOCKS_NUM; i++)
+    {
+        close(sockfd[i]);
+    }
+    //printf("\nClear! \n");
     exit(0);
 }
 
@@ -60,9 +65,11 @@ void * send_data(void *input_args)
     int buff_bytes[MAX_PKTS];
 
     int last_read = 0;
+    int last_read_cpy = 0;
     int last_write_cpy = 0;
     int i = 0;
     int counter = 0;
+    int limit_loop = 0;
 
     if( (connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
         sizeof(args->serv_addr))) < 0)
@@ -78,24 +85,29 @@ void * send_data(void *input_args)
     while(1)
     {
         // Critical section
-        printf("Thread %i | Trying to lock mutex\n", args->id);
+        //printf("Thread %i | Trying to lock mutex\n", args->id);
         pthread_mutex_lock(&mutex [args->id]);
-        printf("Thread %i | Lock mutex\n", args->id);
+        //printf("Thread %i | Lock mutex\n", args->id);
         while (data_available[args->id] == 0)
         {
-            printf("Thread %i | Waiting\n", args->id);
+        //    printf("Thread %i | Waiting\n", args->id);
             pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
         }
 
         last_write_cpy = last_write;
+        last_read_cpy = last_read;
+        limit_loop = last_write_cpy;
         counter = 0;
+        
         if ( last_read > last_write_cpy ) //Start again
         {
-            for (i = last_read; i <= MAX_PKTS; i++)
+            limit_loop = MAX_PKTS;
+            for (i = last_read; i <= limit_loop; i++)
             {
                 if( i == MAX_PKTS )
                 {
                     i = 0;
+                    limit_loop = last_write_cpy;
                 }
                 
                 memcpy((char*)buff[counter], recv_buff[i], BUFFER_SIZE*sizeof(char));
@@ -117,7 +129,7 @@ void * send_data(void *input_args)
                 {
                     i = 0;
                 }
-                memcpy((char*)buff[counter], recv_buff[i], BUFFER_SIZE*sizeof(char));
+                memcpy((char*)buff[counter], (char*)recv_buff[i], bytes[i]);
                 buff_bytes[counter] = bytes[i];
                 pkts_read[args->id][i] = 1;
                 last_read = i;
@@ -128,15 +140,18 @@ void * send_data(void *input_args)
         data_available[args->id] = 0;
         // End of critical section
         pthread_mutex_unlock(&mutex [args->id]);
-        printf("Thread %i | Unlock mutex\n", args->id);
-        //printf("Thread %i | Sending packet: %i bytes\n", args->id, buff_bytes);
-        for (i = 0; i <= counter; i++)
+       // printf("Thread %i | Unlock mutex\n", args->id);
+        //printf("Thread %i | last_write %i, last_read %i counter %i diff %i\n", args->id, last_write_cpy, last_read_cpy, counter, (last_write_cpy - last_read_cpy));
+        for (i = 0; i < counter; i++)
         {
             if (buff_bytes[i] <= 0)
             {
+                printf("Thread %i | Exiting...\n", args->id);
                 pthread_exit(0);
             }
+        //    printf("Thread %i | Sending packet: %i bytes\n", args->id, buff_bytes[i]);
             sendto(args->sockfd, buff[i], buff_bytes[i], 0, NULL, 0);
+        //    printf("Thread %i | iteration: %i \n", args->id, i);
         }     
     }
 } 
@@ -145,40 +160,40 @@ int main (int argc, char *argv[])
 {
     if (argc != 2 )
     {
-        printf("%s <D2D IP Address>\n", argv[0]);
+        //printf("%s <D2D IP Address>\n", argv[0]);
         exit(0);
     }
 
     int connfd = 0;
-    struct sockaddr_in addrs[THREADS_NUM+1];
+    struct sockaddr_in addrs[SOCKS_NUM];
     char* d2d_addr = argv[1];
 
-    sockfd[THREADS_NUM] = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd[SOCKS_NUM-1] = socket(AF_INET, SOCK_STREAM, 0);
     memset(&addrs[THREADS_NUM], '0', sizeof(struct sockaddr));
     memset(recv_buff, '0', sizeof(recv_buff));
 
-    addrs[THREADS_NUM].sin_family = AF_INET;
-    addrs[THREADS_NUM].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addrs[THREADS_NUM].sin_port = htons(LOCAL_PORT); 
+    addrs[SOCKS_NUM-1].sin_family = AF_INET;
+    addrs[SOCKS_NUM-1].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addrs[SOCKS_NUM-1].sin_port = htons(LOCAL_PORT); 
 
-    bind(sockfd[THREADS_NUM], (struct sockaddr*)&addrs[THREADS_NUM], 
+    bind(sockfd[SOCKS_NUM-1], (struct sockaddr*)&addrs[SOCKS_NUM-1], 
             sizeof(struct sockaddr_in));
     
     // Catching ctrl-C and sigpipe signals
     signal(SIGINT, intHandler);
     signal(SIGPIPE, intHandler);
 
-    // Loopback address
+    // D2D address
     memset(&addrs[0], '0', sizeof(struct sockaddr));
     addrs[0].sin_family = AF_INET;
-    addrs[0].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addrs[0].sin_port = htons(FWD_LTE_PORT);
+    addrs[0].sin_addr.s_addr = inet_addr(d2d_addr);
+    addrs[0].sin_port = htons(FWD_D2D_PORT);
 
-    // D2D address
+    // Loopback address
     memset(&addrs[1], '0', sizeof(struct sockaddr));
     addrs[1].sin_family = AF_INET;
-    addrs[1].sin_addr.s_addr = inet_addr(d2d_addr);
-    addrs[1].sin_port = htons(FWD_D2D_PORT);
+    addrs[1].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addrs[1].sin_port = htons(FWD_LTE_PORT);
 
     input_t thread_input[THREADS_NUM]; //input for threads
 
@@ -209,30 +224,36 @@ int main (int argc, char *argv[])
        }
     }
 
-    if (listen(sockfd[THREADS_NUM], 1) == 0)
+    sockfd[1] = socket(AF_INET, SOCK_STREAM, 0);
+    if( (connect(sockfd[1], (struct sockaddr *) &addrs[1], sizeof(struct sockaddr))) < 0)
+    {
+        printf("Main Thread | connect(): %s\n", strerror(errno));
+        intHandler();
+    }
+
+    if (listen(sockfd[SOCKS_NUM-1], 1) == 0)
     {
          printf("Main Thread | Connection arrived \n");
     }
 
-    if ( (connfd = accept(sockfd[THREADS_NUM], (struct sockaddr*)NULL, NULL)) < 0 )
+    if ( (connfd = accept(sockfd[SOCKS_NUM-1], (struct sockaddr*)NULL, NULL)) < 0 )
     {
         printf("Main Thread | accept(): %s\n", strerror(errno));
         intHandler();
     }
 
-    struct sockaddr_in* addr = (struct sockaddr_in*) &(addrs[THREADS_NUM]);
+    struct sockaddr_in* addr = (struct sockaddr_in*) &(addrs[SOCKS_NUM-1]);
     printf("Main Thread | Connected to %s\n", inet_ntoa(addr->sin_addr));
     int writing_counter = -1;
 
     while(1)
     {
         // Lock all mutex
-        for (i = 0; i < THREADS_NUM; i++)
-        {
-            printf("Main Thread | Trying to lock mutex %i\n", i);
-            pthread_mutex_lock(&mutex[i]);
-            printf("Main Thread | Lock mutex %i\n", i);
-        }
+
+        //printf("Main Thread | Trying to lock mutex %i\n", i);
+        pthread_mutex_lock(&mutex[0]);
+        //printf("Main Thread | Lock mutex %i\n", i);
+
         
         if (writing_counter == (MAX_PKTS - 1) )
         {
@@ -242,28 +263,28 @@ int main (int argc, char *argv[])
         writing_counter++;
         last_write = writing_counter;
         
-        memset((void*) recv_buff[writing_counter], 0, sizeof(recv_buff));
+        memset((void*) recv_buff[writing_counter], 0, sizeof(char)*BUFFER_SIZE);
 
         if ((bytes[writing_counter] = recv(connfd, recv_buff[writing_counter], sizeof(char)*BUFFER_SIZE, 0)) <= 0)
         {
-            printf("Main Thread | recv(): %s\n", strerror(errno));
+            //printf("Main Thread | recv(): %s\n", strerror(errno));
             intHandler();
         }
      /* else
         {
-            printf("Main Thread | Received %i bytes\n", bytes);
+            //printf("Main Thread | Received %i bytes\n", bytes);
         }
       */ 
+        //printf("Main Thread | Sending %i bytes\n", bytes[writing_counter]);
+        sendto(sockfd[1], recv_buff[writing_counter], bytes[writing_counter], 0, NULL, 0);
+        //printf("Main Thread | last_write %i \n", writing_counter);        
+
+        data_available[0] = 1;
+            //printf("Main Thread | Notifying thread %i\n", i);
+        pthread_mutex_unlock(&mutex[0]);
+        pthread_cond_broadcast(&tx_cond[0]); //Notify to all threads to TX
         
-                
-        for (i = 0; i < THREADS_NUM; i++)
-        {
-            data_available[i] = 1;
-            printf("Main Thread | Notifying thread %i\n", i);
-            pthread_cond_signal(&tx_cond[i]); //Notify to all threads to TX
-            pthread_mutex_unlock(&mutex[i]);
-            printf("Main Thread | Unlock mutex %i\n", i);
-        }
+            //printf("Main Thread | Unlock mutex %i\n", i);
     }
 
 }
