@@ -31,9 +31,9 @@ def device_found(address, properties):
 		val["LTE_BLER"]=BLER
 		sys.stdout.write(str(json.dumps(val)) + '\n')
 		sys.stdout.flush()
-	else:
-		sys.stdout.write(str(json.dumps(val)) + '\n')
-		sys.stdout.flush()
+	#else:
+	#	sys.stdout.write(str(json.dumps(val)) + '\n')
+	#	sys.stdout.flush()
 
 def property_changed(name, value):
 	if (name == "Discovering" and not value):
