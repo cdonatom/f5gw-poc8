@@ -14,6 +14,7 @@ import sys
 from ctrl_config import *
 
 msg_data="{}"
+EST_SLOT=4
 
 
 class MyTCPHandler(SocketServer.BaseRequestHandler):
@@ -77,13 +78,13 @@ def syncAP(psucc_thresh=0.75):
 				psucc = float(stats.get('psucc'))
 				mask_sum= float(stats.get('mask_sum'))
 				psucc_list= stats.get('psucc_list')
-				psucc=get_last_psucc(psucc_list,10,4)
+				psucc=get_last_psucc(psucc_list,10,EST_SLOT)
 				if numpy.isnan(psucc):
 					psucc=float(0);
 
 				val=0
 				if int(stats.get('enable_controller'))>1:
-					if (mask_sum < 4) or (psucc < float(psucc_thresh)):
+					if (mask_sum < EST_SLOT) or (psucc < float(psucc_thresh)):
 						val=10
 				if val != 0:
 					print "TSF compensation"
@@ -96,9 +97,14 @@ def enforceXFSM(msg):
         sock = socket.socket(socket.AF_INET, # Internet
                              socket.SOCK_DGRAM) # UDP
         sock.bind((IP_ETH_AP, CTRL_TO_AP_PORT))
+	global EST_SLOT
         while True:
 		data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
 		try:
+			tmp_data=json.loads(data)
+			if 'EST_SLOT' in data:
+				if tmp_data['EST_SLOT']:
+					EST_SLOT=int(tmp_data['EST_SLOT'])
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			s.connect((IP_WIFI_UE, AP_TO_UE_PORT))
 			s.send(data)
@@ -150,7 +156,7 @@ if __name__ == "__main__":
 	HOST=ni.ifaddresses(iface)[2][0]['addr']
 
 	# Create the server, binding to localhost on port 9999
-	thread.start_new_thread(syncAP,(0.8,))	
+	thread.start_new_thread(syncAP,(0.83,))	
 	thread.start_new_thread(enforceXFSM,(1,))	
 	thread.start_new_thread(iperf_server,(1,))	
 	SocketServer.TCPServer.allow_reuse_address = True
