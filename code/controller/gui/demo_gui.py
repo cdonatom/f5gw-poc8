@@ -327,7 +327,7 @@ class Adder(ttk.Frame):
 	thr_wmp_=0
 	thr_wmp=0
 
-	MAX_LTE_THR=18;
+	MAX_LTE_THR=18336*1000;
 
 	while True:
 		try:
@@ -354,7 +354,7 @@ class Adder(ttk.Frame):
 				t0_iperf_ue1=time.time()
 				try:
 					thr_ue1_=thr_ue1
-					thr_ue1=15+float(stats.get('thr'))*100/(MAX_LTE_THR*1e6)
+					thr_ue1=float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue1):
 						thr_ue1=float(0);
 					thr_ue1=self.ewma(thr_ue1,thr_ue1_,0.7)
@@ -372,7 +372,7 @@ class Adder(ttk.Frame):
 				t0_iperf_ue2=time.time()
 				try:
 					thr_ue2_=thr_ue2
-					thr_ue2=15+float(stats.get('thr'))*100/(MAX_LTE_THR*1e6)
+					thr_ue2=float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue2):
 						thr_ue2=float(0);
 					thr_ue2=self.ewma(thr_ue2,thr_ue2_,0.7)
