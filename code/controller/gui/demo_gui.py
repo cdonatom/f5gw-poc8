@@ -291,6 +291,9 @@ class Adder(ttk.Frame):
 	yy=yy[::-1]
 	return xx,yy
 
+    def ewma(self,y,y_,a):
+	return a*y +(1-a)*y_
+
     def loop_statistics(self,x):
 	init_plot_success_rate=True;
 	init_plot_iperf=True;
@@ -318,21 +321,41 @@ class Adder(ttk.Frame):
 
 	t0_iperf_ue3=time.time()
 	t1_iperf_ue3=time.time()
+	
+	bler_ue1_=0
+	bler_ue1=0
+	thr_ue1_=0
+	thr_ue1=0
+
+	bler_ue2_=0
+	bler_ue2=0
+
+	thr_ue2_=0
+	thr_ue2=0
+
+	psucc_=0
+	psucc=0
+
+	thr_wmp_=0
+	thr_wmp=0
+
+	MAX_LTE_THR=18;
 
 	while True:
 		try:
 			data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
 			stats=json.loads(data)
-			print stats
 			if stats['type']=='iperf_wmp':
 				t1_iperf_ue3=time.time()
 				DT=t1_iperf_ue3-t0_iperf_ue3
 				t0_iperf_ue3=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(4.30*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr,DT,self.xval_thr_wmp,self.yval_thr_wmp)
+					thr_wmp_=thr_wmp
+					thr_wmp=float(stats.get('thr'))*100/(3.80*1e6)
+					if numpy.isnan(thr_wmp):
+						thr_wmp=float(0);
+					thr_wmp=self.ewma(thr_wmp,thr_wmp_,0.7)
+					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr_wmp,DT,self.xval_thr_wmp,self.yval_thr_wmp)
 						
 				except Exception as e:
 					print e
@@ -342,33 +365,43 @@ class Adder(ttk.Frame):
 				DT=t1_iperf_ue1-t0_iperf_ue1
 				t0_iperf_ue1=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(15*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr,DT,self.xval_thr_ue1,self.yval_thr_ue1)
+					thr_ue1_=thr_ue1
+					thr_ue1=15+float(stats.get('thr'))*100/(MAX_LTE_THR*1e6)
+					if numpy.isnan(thr_ue1):
+						thr_ue1=float(0);
+					thr_ue1=self.ewma(thr_ue1,thr_ue1_,0.7)
+					if numpy.isnan(thr_ue1):
+						thr_ue1=float(0);
+					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr_ue1,DT,self.xval_thr_ue1,self.yval_thr_ue1)
 						
 				except Exception as e:
 					print e
 
 			if stats['type']=='iperf_ue2':
+				print stats
 				t1_iperf_ue2=time.time()
 				DT=t1_iperf_ue2-t0_iperf_ue2
 				t0_iperf_ue2=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(15*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr,DT,self.xval_thr_ue2,self.yval_thr_ue2)
+					thr_ue2_=thr_ue2
+					thr_ue2=15+float(stats.get('thr'))*100/(MAX_LTE_THR*1e6)
+					if numpy.isnan(thr_ue2):
+						thr_ue2=float(0);
+					thr_ue2=self.ewma(thr_ue2,thr_ue2_,0.7)
+					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr_ue2,DT,self.xval_thr_ue2,self.yval_thr_ue2)
 						
 				except Exception as e:
 					print e
+
 
 			if stats['type']=='ue1_stats':
 				t1_ue1_stats=time.time()
 				DT=t1_ue1_stats-t0_ue1_stats
 				t0_ue1_stats=time.time()
 				try:
+					bler_ue1_=bler_ue1
 					bler_ue1=stats.get('PDSCH-BLER')/float(100)
+					bler_ue1=self.ewma(bler_ue1,bler_ue1_,0.7)
 
 					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue1)))
 					self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1=self.set_xy((1-bler_ue1),DT,self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1)
@@ -381,7 +414,9 @@ class Adder(ttk.Frame):
 				DT=t1_ue2_stats-t0_ue2_stats
 				t0_ue2_stats=time.time()
 				try:
+					bler_ue2_=bler_ue2
 					bler_ue2=stats.get('PDSCH-BLER')/float(100)
+					bler_ue2=self.ewma(bler_ue2,bler_ue2_,0.7)
 
 					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue2)))
 					self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2=self.set_xy((1-bler_ue2),DT,self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2)
@@ -394,11 +429,13 @@ class Adder(ttk.Frame):
 				DT=t1_ue3_stats-t0_ue3_stats
 				t0_ue3_stats=time.time()
 				try:
+					psucc_=psucc
 					psucc=float(stats.get('psucc'));
-					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
-					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
 					if numpy.isnan(psucc):
 						psucc=float(0);
+					psucc=self.ewma(psucc,psucc_,0.7)
+					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
+					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
 
 					self.xval_psucc_wifi,self.yval_psucc_wifi=self.set_xy(psucc,DT,self.xval_psucc_wifi,self.yval_psucc_wifi)
 
@@ -459,9 +496,9 @@ class Adder(ttk.Frame):
 						ax.set_ylabel('SUCCESS RATE')
 
 						self.tick=(self.tick+1) % self.Nplot
-						line_psucc_wifi,     = ax.plot(-1*numpy.array(self.xval_psucc_wifi)    ,self.yval_psucc_wifi[::-1]    ,label="WIFI success rate")
-						line_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue1),self.yval_blsucc_lte_ue1[::-1],label="LTE Block success rate UE1")
-						line_bler_lte_ue2,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue2),self.yval_blsucc_lte_ue2[::-1],label="LTE Block success rate UE2")
+						line_psucc_wifi,     = ax.plot(-1*numpy.array(self.xval_psucc_wifi)    ,self.yval_psucc_wifi[::-1]    ,label="WIFI")
+						line_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue1),self.yval_blsucc_lte_ue1[::-1],label="LTE UE1")
+						line_bler_lte_ue2,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue2),self.yval_blsucc_lte_ue2[::-1],label="LTE UE2")
 						ax.set_ylim([0, 1])
 						ax.patch.set_facecolor('white')
 						f.set_facecolor('white')
@@ -474,6 +511,7 @@ class Adder(ttk.Frame):
 					else: 
 						line_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
 						line_bler_lte_ue1.set_ydata(self.yval_blsucc_lte_ue1[::-1])
+						line_bler_lte_ue2.set_ydata(self.yval_blsucc_lte_ue2[::-1])
 						f.canvas.draw()
 
 					init_plot_success_rate = False;
