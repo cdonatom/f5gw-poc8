@@ -16,7 +16,7 @@
 
 #define THREADS_NUM     1
 #define SOCKS_NUM       3
-#define BUFFER_SIZE     1460
+#define BUFFER_SIZE     4096
 #define MAX_PKTS        2048
 
 pthread_t               t_id [THREADS_NUM]; //ids for threads
@@ -29,6 +29,7 @@ unsigned int            bytes[MAX_PKTS]; //shared variable. Read-only
 unsigned int            data_available[THREADS_NUM]; //conditional variable
 unsigned int            last_write; //main thread writes
 int                     pkts_read[THREADS_NUM][MAX_PKTS];
+int                     kill_thread;
 
 typedef struct input_thread
 {
@@ -70,6 +71,7 @@ void * send_data(void *input_args)
     int i = 0;
     int counter = 0;
     int limit_loop = 0;
+    args->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if( (connect(args->sockfd, (struct sockaddr *)&(args->serv_addr), 
         sizeof(args->serv_addr))) < 0)
@@ -92,6 +94,15 @@ void * send_data(void *input_args)
         {
         //    printf("Thread %i | Waiting\n", args->id);
             pthread_cond_wait(&tx_cond [args->id], &mutex [args->id]);
+        }
+
+        if (kill_thread)
+        {
+            printf("Thread %i | Closing socket and exiting...\n", args->id);
+            close(args->sockfd);
+            kill_thread = 0;
+            pthread_mutex_unlock(&mutex [args->id]);
+            pthread_exit(0);
         }
 
         last_write_cpy = last_write;
@@ -198,7 +209,7 @@ int main (int argc, char *argv[])
     input_t thread_input[THREADS_NUM]; //input for threads
 
     unsigned int i = 0;
-    int rc = 0;
+    int rc = 1;
     
     //Creates the mutexes and threads
     for (i = 0; i < THREADS_NUM; i++) 
@@ -210,18 +221,10 @@ int main (int argc, char *argv[])
 
         memcpy((struct sockaddr*)&(thread_input[i].serv_addr), (struct sockaddr*) &addrs[i], 
                     sizeof(struct sockaddr));
-        sockfd[i] = socket(AF_INET, SOCK_STREAM, 0);
-        thread_input[i].sockfd = sockfd[i];
+        thread_input[i].sockfd = 0;
         thread_input[i].id = i;
         memset((void*) pkts_read[i], 0, MAX_PKTS*sizeof(int));
 
-        printf("In main: creating thread %i\n", i);
-        rc = pthread_create(&t_id[i], NULL, send_data, (input_t *)&thread_input[i]);
-        if (rc)
-        {
-            printf("Main Thread | pthread_create(): %s\n", strerror(errno));
-            exit(-1);
-       }
     }
 
     sockfd[1] = socket(AF_INET, SOCK_STREAM, 0);
@@ -253,8 +256,7 @@ int main (int argc, char *argv[])
         //printf("Main Thread | Trying to lock mutex %i\n", i);
         pthread_mutex_lock(&mutex[0]);
         //printf("Main Thread | Lock mutex %i\n", i);
-
-        
+  
         if (writing_counter == (MAX_PKTS - 1) )
         {
             writing_counter = -1;
@@ -263,11 +265,11 @@ int main (int argc, char *argv[])
         writing_counter++;
         last_write = writing_counter;
         
-        memset((void*) recv_buff[writing_counter], 0, sizeof(char)*BUFFER_SIZE);
+        //memset((void*) recv_buff[writing_counter], 0, sizeof(char)*BUFFER_SIZE);
 
-        if ((bytes[writing_counter] = recv(connfd, recv_buff[writing_counter], sizeof(char)*BUFFER_SIZE, 0)) <= 0)
+        if ((bytes[writing_counter] = recv(connfd, recv_buff[writing_counter], sizeof(char)*BUFFER_SIZE, 0)) < 0)
         {
-            //printf("Main Thread | recv(): %s\n", strerror(errno));
+            printf("Main Thread | recv(): %s\n", strerror(errno));
             intHandler();
         }
      /* else
@@ -275,16 +277,40 @@ int main (int argc, char *argv[])
             //printf("Main Thread | Received %i bytes\n", bytes);
         }
       */ 
+
+        if (strstr(recv_buff[writing_counter], "TRIGGER") != NULL )
+        {
+            printf("Main Thread | Trigger found! writing_counter %i \n", writing_counter);
+            if (rc)
+            {
+                printf("Main main | creating thread\n");
+                rc = pthread_create(&t_id[0], NULL, send_data, (input_t *)&thread_input[0]);
+                if (rc)
+                {
+                    printf("Main Thread | pthread_create(): %s\n", strerror(errno));
+                    exit(-1);
+                }
+                kill_thread = 0;
+            }
+        }
+        if (strstr(recv_buff[writing_counter], "DISABLE") != NULL )
+        {
+            printf("Main Thread | Disable trigger found! \n");
+            printf("Main Thread | canceling thread\n");
+            kill_thread = 1;
+            rc = 1;
+        }
+
         //printf("Main Thread | Sending %i bytes\n", bytes[writing_counter]);
         sendto(sockfd[1], recv_buff[writing_counter], bytes[writing_counter], 0, NULL, 0);
         //printf("Main Thread | last_write %i \n", writing_counter);        
 
         data_available[0] = 1;
             //printf("Main Thread | Notifying thread %i\n", i);
+
         pthread_mutex_unlock(&mutex[0]);
         pthread_cond_broadcast(&tx_cond[0]); //Notify to all threads to TX
-        
-            //printf("Main Thread | Unlock mutex %i\n", i);
+        //printf("Main Thread | Unlock mutex %i\n", i);
     }
 
 }
