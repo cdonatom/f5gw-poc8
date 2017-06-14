@@ -460,7 +460,7 @@ class Adder(ttk.Frame):
 						canvas.get_tk_widget().grid(column=1, row=3, columnspan=1, sticky='nesw')
 						ax.legend(loc="lower left")
 					else: 
-						line_thr_ue1.set_xdata(-1*numpy.array(self.xval_thr_wmp))
+						line_thr_wmp.set_xdata(-1*numpy.array(self.xval_thr_wmp))
 						line_thr_wmp.set_ydata(self.yval_thr_wmp[::-1])
 
 						line_thr_ue1.set_ydata(self.yval_thr_ue1[::-1])
