@@ -79,11 +79,10 @@ def check_error_on_log_file(filename, ccommand):
 		time.sleep(5)
 def closeall():
 	#KILL lte controller
-	command="sh {}/kill_proc.sh".format(demo_dir)
-	local_command=command;
-	os.system(local_command)
 	cmd="kill -9 $(ps aux | grep uhd_rx_cfile | awk '{ print $2}')"
+	print "==================================="
 	print cmd
+	print "==================================="
 	os.system(cmd)
 
 
@@ -174,8 +173,9 @@ class Adder(ttk.Frame):
 	local_command='{}'.format(command_load);
 	os.system(local_command)
 
-    def startControllerLTE(self,enable_controller):
-	mjson={'xfsm':enable_controller}
+    def startControllerLTE(self,enable_controller,blank_subframes):
+	print "blank_subframes={}".format(blank_subframes)
+	mjson={'xfsm':enable_controller,'EST_SLOT':blank_subframes}
 	MESSAGE = json.dumps(mjson)
 	print MESSAGE
 
@@ -243,18 +243,11 @@ class Adder(ttk.Frame):
 	nsamp=round(2*decimal.Decimal(self.plot_w_size.get())*decimal.Decimal('1e-3') * decimal.Decimal(self.samp_rate.get()))
 	print "nsamp={}".format(nsamp)
 
-	print ">>>>>>>"
-
 	command="{} {}/pyUsrpTracker/uhd_rx_cfile \
 		--args=serial={} --samp-rate {} -f {} -g 28 -s -N {} --plotwindowsize {} /tmp/usrp.raw --plotfigout {}".format(py_cmd,demo_dir,usrp_serial,samp_rate,freq,nsamp,plot_w_size,usrp_fig_location)
 	local_command='{} > /tmp/uhd_rx_cfile.log 2>&1 &'.format(command);
 	print local_command
 	os.system(local_command)
-	try:
-		thread._Thread_stop()
-	except Exception as e:
-		print e
-		pass
 
 #    	thread.start_new_thread(check_error_on_log_file,('/tmp/demo_controller.err', local_command) )
 	print "CHANGE BUTTON STATES"
@@ -267,16 +260,11 @@ class Adder(ttk.Frame):
 	print "STOP USRP"
 	closeall()
 
-	try:
-		thread._Thread_stop()
-	except Exception as e:
-		print e
-		pass
-
         self.startUSRPBtn.state(['!pressed', '!disabled'])
         self.stopUSRPBtn.state(['pressed', 'disabled'])
 	self.Frequency.configure(state='normal')
 	self.WindowSize.configure(state='normal')
+
     def set_xy(self,thr,DT,x,y):
 	xx=[]
 	yy=[]
@@ -290,6 +278,9 @@ class Adder(ttk.Frame):
 	yy=yy[0:self.Nplot]
 	yy=yy[::-1]
 	return xx,yy
+
+    def ewma(self,y,y_,a):
+	return a*y +(1-a)*y_
 
     def loop_statistics(self,x):
 	init_plot_success_rate=True;
@@ -318,21 +309,41 @@ class Adder(ttk.Frame):
 
 	t0_iperf_ue3=time.time()
 	t1_iperf_ue3=time.time()
+	
+	bler_ue1_=0
+	bler_ue1=0
+	thr_ue1_=0
+	thr_ue1=0
+
+	bler_ue2_=0
+	bler_ue2=0
+
+	thr_ue2_=0
+	thr_ue2=0
+
+	psucc_=0
+	psucc=0
+
+	thr_wmp_=0
+	thr_wmp=0
+
+	MAX_LTE_THR=18336*1000;
 
 	while True:
 		try:
 			data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
 			stats=json.loads(data)
-			print stats
 			if stats['type']=='iperf_wmp':
 				t1_iperf_ue3=time.time()
 				DT=t1_iperf_ue3-t0_iperf_ue3
 				t0_iperf_ue3=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(4.30*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr,DT,self.xval_thr_wmp,self.yval_thr_wmp)
+					thr_wmp_=thr_wmp
+					thr_wmp=float(stats.get('thr'))*100/(3.80*1e6)
+					if numpy.isnan(thr_wmp):
+						thr_wmp=float(0);
+					thr_wmp=self.ewma(thr_wmp,thr_wmp_,0.7)
+					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr_wmp,DT,self.xval_thr_wmp,self.yval_thr_wmp)
 						
 				except Exception as e:
 					print e
@@ -342,33 +353,43 @@ class Adder(ttk.Frame):
 				DT=t1_iperf_ue1-t0_iperf_ue1
 				t0_iperf_ue1=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(15*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr,DT,self.xval_thr_ue1,self.yval_thr_ue1)
+					thr_ue1_=thr_ue1
+					thr_ue1=float(stats.get('thr'))*100/MAX_LTE_THR
+					if numpy.isnan(thr_ue1):
+						thr_ue1=float(0);
+					thr_ue1=self.ewma(thr_ue1,thr_ue1_,0.7)
+					if numpy.isnan(thr_ue1):
+						thr_ue1=float(0);
+					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr_ue1,DT,self.xval_thr_ue1,self.yval_thr_ue1)
 						
 				except Exception as e:
 					print e
 
 			if stats['type']=='iperf_ue2':
+				print stats
 				t1_iperf_ue2=time.time()
 				DT=t1_iperf_ue2-t0_iperf_ue2
 				t0_iperf_ue2=time.time()
 				try:
-					thr=float(stats.get('thr'))*100/(15*1e6)
-					if numpy.isnan(thr):
-						thr=float(0);
-					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr,DT,self.xval_thr_ue2,self.yval_thr_ue2)
+					thr_ue2_=thr_ue2
+					thr_ue2=float(stats.get('thr'))*100/MAX_LTE_THR
+					if numpy.isnan(thr_ue2):
+						thr_ue2=float(0);
+					thr_ue2=self.ewma(thr_ue2,thr_ue2_,0.7)
+					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr_ue2,DT,self.xval_thr_ue2,self.yval_thr_ue2)
 						
 				except Exception as e:
 					print e
+
 
 			if stats['type']=='ue1_stats':
 				t1_ue1_stats=time.time()
 				DT=t1_ue1_stats-t0_ue1_stats
 				t0_ue1_stats=time.time()
 				try:
+					bler_ue1_=bler_ue1
 					bler_ue1=stats.get('PDSCH-BLER')/float(100)
+					bler_ue1=self.ewma(bler_ue1,bler_ue1_,0.7)
 
 					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue1)))
 					self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1=self.set_xy((1-bler_ue1),DT,self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1)
@@ -381,7 +402,9 @@ class Adder(ttk.Frame):
 				DT=t1_ue2_stats-t0_ue2_stats
 				t0_ue2_stats=time.time()
 				try:
+					bler_ue2_=bler_ue2
 					bler_ue2=stats.get('PDSCH-BLER')/float(100)
+					bler_ue2=self.ewma(bler_ue2,bler_ue2_,0.7)
 
 					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue2)))
 					self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2=self.set_xy((1-bler_ue2),DT,self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2)
@@ -394,11 +417,13 @@ class Adder(ttk.Frame):
 				DT=t1_ue3_stats-t0_ue3_stats
 				t0_ue3_stats=time.time()
 				try:
+					psucc_=psucc
 					psucc=float(stats.get('psucc'));
-					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
-					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
 					if numpy.isnan(psucc):
 						psucc=float(0);
+					psucc=self.ewma(psucc,psucc_,0.7)
+					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
+					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
 
 					self.xval_psucc_wifi,self.yval_psucc_wifi=self.set_xy(psucc,DT,self.xval_psucc_wifi,self.yval_psucc_wifi)
 
@@ -421,7 +446,7 @@ class Adder(ttk.Frame):
 						ax.set_ylabel('Throughput')
 
 						self.tick=(self.tick+1) % self.Nplot
-						line_thr_wmp, = ax.plot(-1*numpy.array(self.xval),self.yval_thr_wmp[::-1],label="WMP THR")
+						line_thr_wmp, = ax.plot(-1*numpy.array(self.xval_thr_wmp),self.yval_thr_wmp[::-1],label="WMP THR")
 						line_thr_ue1,   = ax.plot(-1*numpy.array(self.xval_thr_ue1),self.yval_thr_ue1[::-1],label="UE1 THR")
 						line_thr_ue2,   = ax.plot(-1*numpy.array(self.xval_thr_ue2),self.yval_thr_ue2[::-1],label="UE2 THR")
 						ax.set_ylim([0, 100])
@@ -435,6 +460,7 @@ class Adder(ttk.Frame):
 						canvas.get_tk_widget().grid(column=1, row=3, columnspan=1, sticky='nesw')
 						ax.legend(loc="lower left")
 					else: 
+						line_thr_ue1.set_xdata(-1*numpy.array(self.xval_thr_wmp))
 						line_thr_wmp.set_ydata(self.yval_thr_wmp[::-1])
 
 						line_thr_ue1.set_ydata(self.yval_thr_ue1[::-1])
@@ -459,9 +485,9 @@ class Adder(ttk.Frame):
 						ax.set_ylabel('SUCCESS RATE')
 
 						self.tick=(self.tick+1) % self.Nplot
-						line_psucc_wifi,     = ax.plot(-1*numpy.array(self.xval_psucc_wifi)    ,self.yval_psucc_wifi[::-1]    ,label="WIFI success rate")
-						line_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue1),self.yval_blsucc_lte_ue1[::-1],label="LTE Block success rate UE1")
-						line_bler_lte_ue2,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue2),self.yval_blsucc_lte_ue2[::-1],label="LTE Block success rate UE2")
+						line_psucc_wifi,     = ax.plot(-1*numpy.array(self.xval_psucc_wifi)    ,self.yval_psucc_wifi[::-1]    ,label="WIFI")
+						line_bler_lte_ue1,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue1),self.yval_blsucc_lte_ue1[::-1],label="LTE UE1")
+						line_bler_lte_ue2,   = ax.plot(-1*numpy.array(self.xval_blsucc_lte_ue2),self.yval_blsucc_lte_ue2[::-1],label="LTE UE2")
 						ax.set_ylim([0, 1])
 						ax.patch.set_facecolor('white')
 						f.set_facecolor('white')
@@ -474,6 +500,7 @@ class Adder(ttk.Frame):
 					else: 
 						line_psucc_wifi.set_ydata(self.yval_psucc_wifi[::-1])
 						line_bler_lte_ue1.set_ydata(self.yval_blsucc_lte_ue1[::-1])
+						line_bler_lte_ue2.set_ydata(self.yval_blsucc_lte_ue2[::-1])
 						f.canvas.draw()
 
 					init_plot_success_rate = False;
@@ -673,32 +700,7 @@ class Adder(ttk.Frame):
         self.channel_frame.grid(column=1, row=1, columnspan=1, sticky='nesw')
 
 	thread.start_new_thread(self.loop_statistics,(1,))
-	#Traffic Frame
-	self.traffic_frame=ttk.LabelFrame(self, text='WiFi Traffic', height=100, width=100)
-        self.traffic_frame.grid(column=1, row=2, columnspan=1, sticky='nesw')
 
-#        self.disableControllerLTEBtn = ttk.Button(self.traffic_frame, text="SETUP WIFI", width=15, command=self.setupWiFi,  style=SUNKABLE_BUTTON)
-#        self.disableControllerLTEBtn.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
-
-#        self.startWifiTrafficBtn = ttk.Button(self.traffic_frame, text="START WIFI TRAFFIC", width=15, command=self.startWifiTraffic,  style=SUNKABLE_BUTTON)
-#        self.startWifiTrafficBtn.grid(row=1, column=2, padx=15, pady=15, ipady=2, sticky=W)
-
-#        self.stopWifiTrafficBtn = ttk.Button(self.traffic_frame, text="STOP WIFI TRAFFIC", width=15, command=self.stopWifiTraffic,  style=SUNKABLE_BUTTON)
-#        self.stopWifiTrafficBtn.grid(row=1, column=3, padx=15, pady=15, ipady=2, sticky=W)
-
-        self.startControllerLTEBtn = ttk.Button(self.traffic_frame, text="TDMA+LTEcoex", width=15, command=lambda: self.startControllerLTE('2'),  style=SUNKABLE_BUTTON)
-        self.startControllerLTEBtn.grid(row=2, column=1, padx=15, pady=15, ipady=2, sticky=W)
-
-#        self.disableControllerLTEBtn = ttk.Button(self.traffic_frame, text="NO LTEcoex", width=15, command=lambda: self.startControllerLTE('3'),  style=SUNKABLE_BUTTON)
-#        self.disableControllerLTEBtn.grid(row=2, column=2, padx=15, pady=15, ipady=2, sticky=W)
-
-        self.dcfControllerLTEBtn = ttk.Button(self.traffic_frame, text="DCF", width=15, command=lambda: self.startControllerLTE('1'),  style=SUNKABLE_BUTTON)
-        self.dcfControllerLTEBtn.grid(row=2, column=3, padx=15, pady=15, ipady=2, sticky=W)
-
-#        self.killControllerLTEBtn = ttk.Button(self.traffic_frame, text="KILL", width=15, command=self.killControllerLTE,  style=SUNKABLE_BUTTON)
-#        self.killControllerLTEBtn.grid(row=2, column=4, padx=15, pady=15, ipady=2, sticky=W)
-        self.killControllerLTEBtn = ttk.Button(self.traffic_frame, text="CLEAN PLOTS", width=15, command=self.init_yvals,  style=SUNKABLE_BUTTON)
-        self.killControllerLTEBtn.grid(row=2, column=4, padx=15, pady=15, ipady=2, sticky=W)
 	# Statistics Frame
 	
 	self.stats_frame = ttk.LabelFrame(self, text='Monitor info', height=100, width=100)
@@ -711,9 +713,30 @@ class Adder(ttk.Frame):
 	self.blsuccLabel.grid(column=0,row=3,sticky=W)
 
         self.ue_stats_frame = ttk.LabelFrame(self, text='SUCCESS RATE', height=100, width=100)
-        self.ue_stats_frame.grid(column=1, row=3, columnspan=1, sticky='nesw')
+        self.ue_stats_frame.grid(column=1, row=2, columnspan=1, sticky='nesw')
         self.ue_traffic_frame = ttk.LabelFrame(self, text='PERFORMANCE', height=100, width=100)
-        self.ue_traffic_frame.grid(column=1, row=4, columnspan=1, sticky='nesw')
+        self.ue_traffic_frame.grid(column=1, row=3, columnspan=1, sticky='nesw')
+
+	self.wmp_frame = ttk.LabelFrame(self, text='PLOT CONTROL', height=100, width=100)
+        self.wmp_frame.grid(column=1, row=4, columnspan=1, sticky='nesw')
+        self.cleanPlotBtn = ttk.Button(self.wmp_frame, text="CLEAN PLOTS", width=15, command=self.init_yvals,  style=SUNKABLE_BUTTON)
+        self.cleanPlotBtn.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
+
+	#Traffic Frame
+	self.wmp_frame=ttk.LabelFrame(self, text='WMP STATE MACHINE ENFORCEMENT', height=100, width=100)
+        self.wmp_frame.grid(column=0, row=3, columnspan=1, sticky='nesw')
+
+
+	list_subframes=[x for x in range(1,11)]
+	self.blankframes = StringVar(value=list_subframes[3])
+        self.subframes = OptionMenu(self.wmp_frame, self.blankframes, *list_subframes)
+	self.subframes.configure(state="active")
+        self.subframes.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
+
+        self.startControllerLTEBtn = ttk.Button(self.wmp_frame, text="TDMA+LTEcoex", width=15, command=lambda: self.startControllerLTE('2',self.blankframes.get()),  style=SUNKABLE_BUTTON)
+        self.startControllerLTEBtn.grid(row=2, column=1, padx=15, pady=15, ipady=2, sticky=W)
+        self.dcfControllerLTEBtn = ttk.Button(self.wmp_frame, text="DCF", width=15, command=lambda: self.startControllerLTE('1',0),  style=SUNKABLE_BUTTON)
+        self.dcfControllerLTEBtn.grid(row=2, column=3, padx=15, pady=15, ipady=2, sticky=W)
 #	self.topo_frame=ttk.LabelFrame(self, text="Network Scenario", height=100, width=90)
 #        self.topo_frame.grid(column=0, row=4, columnspan=1, sticky='nesw')
 	

@@ -21,18 +21,24 @@ import sys
 BUFFER_SIZE = 1024
 enable_controller=1
 msg_stats=""
+EST_SLOT=4
 class MyTCPHandler(SocketServer.BaseRequestHandler):
 	
 	def handle(self):
 		global enable_controller
 		global msg_data
+		global EST_SLOT
 		# self.request is the TCP socket connected to the client
 		jmsg_data = self.request.recv(1024).strip()
 		data=json.loads(jmsg_data)
-		if data['xfsm']:
-			print ">>>>> ENABLE {}".format(data['xfsm'])
-			enable_controller=str(data['xfsm'])
-			os.system('bytecode-manager -a {}'.format(data['xfsm']))
+		if 'xfsm' in jmsg_data:
+			if data['xfsm']:
+				print ">>>>> ENABLE {}".format(data['xfsm'])
+				enable_controller=str(data['xfsm'])
+				os.system('bytecode-manager -a {}'.format(data['xfsm']))
+		if 'EST_SLOT' in jmsg_data:
+			if data['EST_SLOT']:
+				EST_SLOT=int(data['EST_SLOT'])
 def shift(l,n):
         return l[n:] + l[:n]
 
@@ -143,7 +149,6 @@ def controllerLTE(x=1):
 
 		if mask=="0000000000":
 			mask="1111111111"		
-		EST_SLOT=4
 		L=10
 		p_insert=numpy.random.rand();
 		if mask_sum < EST_SLOT:
@@ -168,6 +173,7 @@ def controllerLTE(x=1):
 			s.connect((IP_WIFI_AP, UE_TO_AP_PORT))
 			s.send(msg_stats)
 			s.close()
+			print EST_SLOT
 		except Exception, e:
 			print e
 		#send stats to Controller
