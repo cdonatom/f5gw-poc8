@@ -180,7 +180,7 @@ class Adder(ttk.Frame):
 	print MESSAGE
 
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
-	sock.sendto(MESSAGE, (IP_ETH_AP, CTRL_TO_AP_PORT))
+	sock.sendto(MESSAGE, (IP_ETH_AP, STATS_PORT))
 	sock.close()
 	"""
 	command="sh {}/kill_proc.sh".format(demo_dir)
@@ -290,6 +290,7 @@ class Adder(ttk.Frame):
 	psucc=0;
 	psucc_=0
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	print AP_TO_CTRL_PORT
         sock.bind((IP_CONTROLLER,AP_TO_CTRL_PORT))
 
 	t0_ue1_stats=time.time()
@@ -339,7 +340,7 @@ class Adder(ttk.Frame):
 				t0_iperf_ue3=time.time()
 				try:
 					thr_wmp_=thr_wmp
-					thr_wmp=float(stats.get('thr'))*100/(3.80*1e6)
+					thr_wmp=float(stats.get('thr'))*100/(4*1e6)
 					if numpy.isnan(thr_wmp):
 						thr_wmp=float(0);
 					thr_wmp=self.ewma(thr_wmp,thr_wmp_,0.7)
@@ -354,7 +355,7 @@ class Adder(ttk.Frame):
 				t0_iperf_ue1=time.time()
 				try:
 					thr_ue1_=thr_ue1
-					thr_ue1=float(stats.get('thr'))*100/MAX_LTE_THR
+					thr_ue1=20+float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue1):
 						thr_ue1=float(0);
 					thr_ue1=self.ewma(thr_ue1,thr_ue1_,0.7)
@@ -372,7 +373,7 @@ class Adder(ttk.Frame):
 				t0_iperf_ue2=time.time()
 				try:
 					thr_ue2_=thr_ue2
-					thr_ue2=float(stats.get('thr'))*100/MAX_LTE_THR
+					thr_ue2=20+float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue2):
 						thr_ue2=float(0);
 					thr_ue2=self.ewma(thr_ue2,thr_ue2_,0.7)
@@ -391,7 +392,7 @@ class Adder(ttk.Frame):
 					bler_ue1=stats.get('PDSCH-BLER')/float(100)
 					bler_ue1=self.ewma(bler_ue1,bler_ue1_,0.7)
 
-					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue1)))
+					self.blsuccLabel.config(text="LTE SUCCESS RATE={}".format(str(1 - bler_ue1)))
 					self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1=self.set_xy((1-bler_ue1),DT,self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1)
 
 				except Exception as e:
@@ -406,7 +407,7 @@ class Adder(ttk.Frame):
 					bler_ue2=stats.get('PDSCH-BLER')/float(100)
 					bler_ue2=self.ewma(bler_ue2,bler_ue2_,0.7)
 
-					self.blsuccLabel.config(text="1 - PDSCH-BLER={}".format(str(1 - bler_ue2)))
+					self.blsuccLabel.config(text="LTE SUCCESS RATE={}".format(str(1 - bler_ue2)))
 					self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2=self.set_xy((1-bler_ue2),DT,self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2)
 
 				except Exception as e:
@@ -422,8 +423,12 @@ class Adder(ttk.Frame):
 					if numpy.isnan(psucc):
 						psucc=float(0);
 					psucc=self.ewma(psucc,psucc_,0.7)
-					self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
-					self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
+					self.psuccLabel.config(text="WMP SUCCESS RATE={}".format(str(stats.get('psucc'))))
+					self.maskLabel.config(text="WMP TDMA PATTERN={}".format(str(stats.get('mask'))))
+					if stats.get('enable_controller')=='1':
+						self.enable_controller.config(text="WMP XFSM={}".format("DCF"))
+					if stats.get('enable_controller')=='2':
+						self.enable_controller.config(text="WMP XFSM={}".format("TDMA"))
 
 					self.xval_psucc_wifi,self.yval_psucc_wifi=self.set_xy(psucc,DT,self.xval_psucc_wifi,self.yval_psucc_wifi)
 
@@ -593,27 +598,6 @@ class Adder(ttk.Frame):
 		    pass
 		time.sleep(1)
 
-    def stats_update(self,x):
-	while True:
-		command = 'tail -n1 /tmp/controllerLTE.log'
-		#ssh_command='ssh fabrizio@lab.tti.unipa.it \"ssh fabrizio@hendrix.local \'{}\' \"'.format(command);
-		try:
-			proc=subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-			(out_wifi, err) = proc.communicate()
-			#command = 'tail -n1 /tmp/lte_ue.json'
-			#proc=subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-			#(out_lte, err) = proc.communicate()
-			#proc=subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-			stats = json.loads(out_wifi)
-			#stats_lte = json.loads(out_lte)
-
-			self.psuccLabel.config(text="PSUCC={}".format(str(stats.get('psucc'))))
-			#self.blsuccLabel.config(text="PDSCH-BLER={}".format(str(stats_lte.get('PDSCH-BLER'))))
-			self.maskLabel.config(text="MASK={}".format(str(stats.get('mask'))))
-		except Exception as e:
-			print e
-			pass
-		time.sleep(1)
 
     def init_yvals(self):
 	self.yval_thr_wmp=[0 for x in range(0,self.Nplot)]
@@ -636,6 +620,7 @@ class Adder(ttk.Frame):
 	self.psucc=0
 	self.mask=1111111111
 	self.bler="0"
+	self.wmp_xfsm="DCF"
         self.root.title('5GPPP DEMO Flex5Gware')
         self.root.option_add('*tearOff', 'FALSE')
 
@@ -705,12 +690,14 @@ class Adder(ttk.Frame):
 	
 	self.stats_frame = ttk.LabelFrame(self, text='Monitor info', height=100, width=100)
         self.stats_frame.grid(column=0, row=2, columnspan=1, sticky='nesw')
-	self.psuccLabel=Label(self.stats_frame, text="PSUCC={}".format(self.psucc))
+	self.psuccLabel=Label(self.stats_frame, text="WMP SUCCESS RATE={}".format(self.psucc))
 	self.psuccLabel.grid(column=0,row=1,sticky=W)
-	self.maskLabel=Label(self.stats_frame, text="MASK={}".format(self.mask))
+	self.maskLabel=Label(self.stats_frame, text="WMP TDMA PATTERN={}".format(self.mask))
 	self.maskLabel.grid(column=0,row=2,sticky=W)
-	self.blsuccLabel=Label(self.stats_frame, text="PDSCH-BLER={}".format(self.bler))
+	self.blsuccLabel=Label(self.stats_frame, text="LTE SUCCESS RATE={}".format(1-int(self.bler)))
 	self.blsuccLabel.grid(column=0,row=3,sticky=W)
+	self.enable_controller=Label(self.stats_frame, text="WMP XFSM={}".format(self.wmp_xfsm))
+	self.enable_controller.grid(column=0,row=4,sticky=W)
 
         self.ue_stats_frame = ttk.LabelFrame(self, text='SUCCESS RATE', height=100, width=100)
         self.ue_stats_frame.grid(column=1, row=2, columnspan=1, sticky='nesw')
@@ -771,7 +758,6 @@ class Adder(ttk.Frame):
         # ttk.Separator(self, orient='horizontal').grid(column=0,
         #         row=1, columnspan=4, sticky='ew')
         #
-#	thread.start_new_thread(self.stats_update,(1,))
 	thread.start_new_thread(self.loopUSRPCapture,(1,))
 
 

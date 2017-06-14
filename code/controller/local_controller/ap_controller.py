@@ -16,6 +16,32 @@ from ctrl_config import *
 msg_data="{}"
 EST_SLOT=4
 
+perl_cmd="\
+#!/usr/bin/perl \n\
+use strict; \n\
+use warnings; \n\
+use Time::HiRes; \n\
+my $reporting_interval = 1.0; # seconds \n\
+my $bytes_this_interval = 0; \n\
+my $start_time = [Time::HiRes::gettimeofday()]; \n\
+STDOUT->autoflush(1); \n\
+while (<>) { \n\
+  if (/ length (\d+):/) { \n\
+    $bytes_this_interval += $1; \n\
+    my $elapsed_seconds = Time::HiRes::tv_interval($start_time); \n\
+    if ($elapsed_seconds > $reporting_interval) { \n\
+       my $bps = $bytes_this_interval / $elapsed_seconds; \n\
+       $bps*=8; \n\
+       printf \"%10.2f\n\",$bps; \n\
+       $start_time = [Time::HiRes::gettimeofday()]; \n\
+       $bytes_this_interval = 0; \n\
+    }\n\
+  }\n\
+}"
+perl_script = open("/tmp/netbps","w")
+perl_script.write(perl_cmd)
+perl_script.close()
+
 
 class MyTCPHandler(SocketServer.BaseRequestHandler):
 	
@@ -84,6 +110,7 @@ def syncAP(psucc_thresh=0.75):
 
 				val=0
 				if int(stats.get('enable_controller'))>1:
+					print "mask_sum={}, EST_SLOT={}, psucc={}".format(mask_sum, EST_SLOT,psucc)
 					if (mask_sum < EST_SLOT) or (psucc < float(psucc_thresh)):
 						val=10
 				if val != 0:
@@ -96,7 +123,7 @@ def syncAP(psucc_thresh=0.75):
 def enforceXFSM(msg):
         sock = socket.socket(socket.AF_INET, # Internet
                              socket.SOCK_DGRAM) # UDP
-        sock.bind((IP_ETH_AP, CTRL_TO_AP_PORT))
+        sock.bind((IP_ETH_AP, STATS_PORT))
 	global EST_SLOT
         while True:
 		data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
@@ -106,14 +133,18 @@ def enforceXFSM(msg):
 				if tmp_data['EST_SLOT']:
 					EST_SLOT=int(tmp_data['EST_SLOT'])
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			s.connect((IP_WIFI_UE, AP_TO_UE_PORT))
+			s.connect((IP_WIFI_UE3, AP_TO_UE_PORT))
 			s.send(data)
 			s.close()
 		except Exception, e:
 			print e
 
-def execute_cmd(cmd):
-    popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+def execute_cmd(cmd,sh=False):
+    if sh:
+	popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True,shell=True)
+    else:
+	popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+	
     for stdout_line in iter(popen.stdout.readline, ""):
         yield stdout_line 
     popen.stdout.close()
@@ -122,6 +153,21 @@ def execute_cmd(cmd):
         raise subprocess.CalledProcessError(return_code, cmd)
 
 
+def sniffer_server(x):
+	iperf_port=5001
+#	cmd = ['iperf', '-s', '-u', '-p',str(iperf_port),'-i','1','-y', 'C']
+	cmd = "tcpdump -i wlan0 udp port 5001 -tt -l -n -e | perl /tmp/netbps"
+	msg={}
+	for path in execute_cmd(cmd,True):
+		iperf_res=path.split(',')
+		print iperf_res
+		msg['type']='iperf_wmp'
+		msg['thr']=iperf_res[0]
+		jmsg=json.dumps(msg)
+
+		# forward to UDP socket
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.sendto(jmsg, (IP_CONTROLLER,AP_TO_CTRL_PORT))
 def iperf_server(x):
 	iperf_port=5001
 	cmd = ['iperf', '-s', '-u', '-p',str(iperf_port),'-i','1','-y', 'C']
@@ -133,8 +179,8 @@ def iperf_server(x):
 		jmsg=json.dumps(msg)
 
 		# forward to UDP socket
-		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		sock.sendto(jmsg, (IP_CONTROLLER,AP_TO_CTRL_PORT))
+#		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#		sock.sendto(jmsg, (IP_CONTROLLER,AP_TO_CTRL_PORT))
 
 server=None
 def handle_ctrl_c(signal, frame):
@@ -156,8 +202,9 @@ if __name__ == "__main__":
 	HOST=ni.ifaddresses(iface)[2][0]['addr']
 
 	# Create the server, binding to localhost on port 9999
-	thread.start_new_thread(syncAP,(0.83,))	
+	thread.start_new_thread(syncAP,(0.85,))	
 	thread.start_new_thread(enforceXFSM,(1,))	
+	thread.start_new_thread(sniffer_server,(1,))	
 	thread.start_new_thread(iperf_server,(1,))	
 	SocketServer.TCPServer.allow_reuse_address = True
 	server = SocketServer.TCPServer((HOST, UE_TO_AP_PORT), MyTCPHandler)
