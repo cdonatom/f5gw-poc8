@@ -65,7 +65,7 @@ void intHandler()
 // Routine for consumer threads
 void * send_data(void *input_args)
 {
-    
+
     input_t * args = &thread_input;
     char buff [MAX_PKTS][BUFFER_SIZE];
     int buff_bytes[MAX_PKTS];
@@ -249,6 +249,7 @@ void * recv_trigger (void *input_args )
         {
             pthread_mutex_lock(&mutex);
             kill_thread = 1;
+            sending_flag = 0;
             pthread_mutex_unlock(&mutex);
         }
 
