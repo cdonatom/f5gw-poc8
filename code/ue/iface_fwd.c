@@ -176,6 +176,7 @@ void * send_data(void *input_args)
 void * recv_trigger (void *input_args )
 {
     char* trigger = "TRIGGER";
+    char* disable = "DISABLE";
     char recv_buff[BUFFER_SIZE];
     int bytes = 0, addr_len = sizeof(struct sockaddr_in);
     struct sockaddr_in addr, sender;
@@ -192,7 +193,7 @@ void * recv_trigger (void *input_args )
     sender.sin_port = htons(TRIGGER_PORT_S);
 
     int sock_udp;
-    printf("Thread Recv  | creating udp socket\n");
+    //printf("Thread Recv  | creating udp socket\n");
     if ((sock_udp = socket(AF_INET, SOCK_DGRAM, 0)) < 0 )
     {
         printf("Thread Recv  | socket(): %s\n", strerror(errno));
@@ -200,19 +201,13 @@ void * recv_trigger (void *input_args )
     }
 
     sockfd[SOCKS_NUM-2] = sock_udp;
-    printf("Thread Recv  | binding udp socket\n");
+    //printf("Thread Recv  | binding udp socket\n");
     if (bind(sock_udp, (struct sockaddr*)&addr, sizeof(addr)) < 0)
     {
         printf("Thread Recv  | bind(): %s\n", strerror(errno));
         pthread_exit(0);
     }
 
-    printf("Thread Recv  | sending trigger! \n");
-    if (sendto(sock_udp, trigger, strlen(trigger)*sizeof(char), 0, (struct sockaddr *) &sender, addr_len) < 0)
-    {
-        printf("Thread Recv  | sendto(): %s\n", strerror(errno));
-        pthread_exit(0);
-    }
 
     while(1)
     {
@@ -222,6 +217,16 @@ void * recv_trigger (void *input_args )
         {
             pthread_cond_wait(&tx_cond , &mutex );
         }
+
+        if (sending_flag == 1)
+        {
+            printf("Thread Recv  | sending trigger! \n");
+            if (sendto(sock_udp, trigger, strlen(trigger)*sizeof(char), 0, (struct sockaddr *) &sender, addr_len) < 0)
+            {
+                printf("Thread Recv  | sendto(): %s\n", strerror(errno));
+                pthread_exit(0);
+            }
+        }
         pthread_mutex_unlock(&mutex);
 
         printf("Thread Recv  | waiting for trigger...\n");
@@ -230,27 +235,37 @@ void * recv_trigger (void *input_args )
             printf("Thread Recv  | recvfrom(): %s\n", strerror(errno));
         }
 
-        if (strstr(recv_buff, "TRIGGER") != NULL )
+        if (strstr(recv_buff, trigger) != NULL )
         {
             printf("Thread Recv  | Trigger received!\n");
             printf("Thread Recv  | creating thread\n");
 
             pthread_mutex_lock(&mutex);
-            rc = pthread_create(&t_id[1], NULL, send_data, NULL);
-            if (rc)
+            if ( rc == 0 )
             {
-                printf("Thread Recv | pthread_create(): %s\n", strerror(errno));
-                exit(-1);
+                rc = pthread_create(&t_id[1], NULL, send_data, NULL);
+                if (rc)
+                {
+                    printf("Thread Recv | pthread_create(): %s\n", strerror(errno));
+                    exit(-1);
+                }
+                kill_thread = 0;
             }
-            kill_thread = 0;
             pthread_mutex_unlock(&mutex);
         }
-        if (strstr(recv_buff, "DISABLE") != NULL )
+        if (strstr(recv_buff, disable) != NULL )
         {
             pthread_mutex_lock(&mutex);
             kill_thread = 1;
             sending_flag = 0;
             pthread_mutex_unlock(&mutex);
+            rc = 0;
+            printf("Thread Recv  | sending disable! \n");
+            if (sendto(sock_udp, disable, strlen(disable)*sizeof(char), 0, (struct sockaddr *) &sender, addr_len) < 0)
+            {
+                printf("Thread Recv  | sendto(): %s\n", strerror(errno));
+                pthread_exit(0);
+            }
         }
 
     }
