@@ -54,7 +54,7 @@ def plotter(inputfile,outputfile,milliseconds,fs=25e6):
 		#plot
 		my_dpi=100
 		
-		width=1050
+		width=900
 		height=300
 		
 		

@@ -286,7 +286,7 @@ class Adder(ttk.Frame):
 	init_plot_success_rate=True;
 	init_plot_iperf=True;
 	global line_psucc_wifi;
-	alpha=0.7
+	alpha=0.3
 	psucc=0;
 	psucc_=0
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -329,7 +329,6 @@ class Adder(ttk.Frame):
 	thr_wmp=0
 
 	MAX_LTE_THR=18336*1000;
-
 	while True:
 		try:
 			data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
@@ -340,10 +339,10 @@ class Adder(ttk.Frame):
 				t0_iperf_ue3=time.time()
 				try:
 					thr_wmp_=thr_wmp
-					thr_wmp=float(stats.get('thr'))*100/(4*1e6)
+					thr_wmp=float(stats.get('thr'))*100/(4.4*1e6)
 					if numpy.isnan(thr_wmp):
 						thr_wmp=float(0);
-					thr_wmp=self.ewma(thr_wmp,thr_wmp_,0.7)
+					thr_wmp=self.ewma(thr_wmp,thr_wmp_,alpha)
 					self.xval_thr_wmp,self.yval_thr_wmp=self.set_xy(thr_wmp,DT,self.xval_thr_wmp,self.yval_thr_wmp)
 						
 				except Exception as e:
@@ -358,7 +357,7 @@ class Adder(ttk.Frame):
 					thr_ue1=20+float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue1):
 						thr_ue1=float(0);
-					thr_ue1=self.ewma(thr_ue1,thr_ue1_,0.7)
+					thr_ue1=self.ewma(thr_ue1,thr_ue1_,alpha)
 					if numpy.isnan(thr_ue1):
 						thr_ue1=float(0);
 					self.xval_thr_ue1,self.yval_thr_ue1=self.set_xy(thr_ue1,DT,self.xval_thr_ue1,self.yval_thr_ue1)
@@ -376,7 +375,7 @@ class Adder(ttk.Frame):
 					thr_ue2=20+float(stats.get('thr'))*100/MAX_LTE_THR
 					if numpy.isnan(thr_ue2):
 						thr_ue2=float(0);
-					thr_ue2=self.ewma(thr_ue2,thr_ue2_,0.7)
+					thr_ue2=self.ewma(thr_ue2,thr_ue2_,alpha)
 					self.xval_thr_ue2,self.yval_thr_ue2=self.set_xy(thr_ue2,DT,self.xval_thr_ue2,self.yval_thr_ue2)
 						
 				except Exception as e:
@@ -390,7 +389,7 @@ class Adder(ttk.Frame):
 				try:
 					bler_ue1_=bler_ue1
 					bler_ue1=stats.get('PDSCH-BLER')/float(100)
-					bler_ue1=self.ewma(bler_ue1,bler_ue1_,0.7)
+					bler_ue1=self.ewma(bler_ue1,bler_ue1_,alpha)
 
 					self.blsuccLabel.config(text="LTE SUCCESS RATE={}".format(str(1 - bler_ue1)))
 					self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1=self.set_xy((1-bler_ue1),DT,self.xval_blsucc_lte_ue1,self.yval_blsucc_lte_ue1)
@@ -405,7 +404,7 @@ class Adder(ttk.Frame):
 				try:
 					bler_ue2_=bler_ue2
 					bler_ue2=stats.get('PDSCH-BLER')/float(100)
-					bler_ue2=self.ewma(bler_ue2,bler_ue2_,0.7)
+					bler_ue2=self.ewma(bler_ue2,bler_ue2_,alpha)
 
 					self.blsuccLabel.config(text="LTE SUCCESS RATE={}".format(str(1 - bler_ue2)))
 					self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2=self.set_xy((1-bler_ue2),DT,self.xval_blsucc_lte_ue2,self.yval_blsucc_lte_ue2)
@@ -422,7 +421,7 @@ class Adder(ttk.Frame):
 					psucc=float(stats.get('psucc'));
 					if numpy.isnan(psucc):
 						psucc=float(0);
-					psucc=self.ewma(psucc,psucc_,0.7)
+					psucc=self.ewma(psucc,psucc_,alpha)
 					self.psuccLabel.config(text="WMP SUCCESS RATE={}".format(str(stats.get('psucc'))))
 					self.maskLabel.config(text="WMP TDMA PATTERN={}".format(str(stats.get('mask'))))
 					if stats.get('enable_controller')=='1':
@@ -444,11 +443,11 @@ class Adder(ttk.Frame):
 #					print "Y={}".format(len(self.yval_thr_ue1[::-1]))
 #					print "Y={}".format(self.yval_thr_ue1[::-1])
 					if init_plot_iperf:
-						f_iperf = Figure(figsize=(10.5,2.2), dpi=100)
+						f_iperf = Figure(figsize=(9,2.2), dpi=100)
 						ax = f_iperf.add_subplot(111)
 						ax.grid(True)
 						ax.set_xlabel('Time [s]')
-						ax.set_ylabel('Throughput')
+						ax.set_ylabel('Throughput [%]')
 
 						self.tick=(self.tick+1) % self.Nplot
 						line_thr_wmp, = ax.plot(-1*numpy.array(self.xval_thr_wmp),self.yval_thr_wmp[::-1],label="WMP THR")
@@ -483,7 +482,7 @@ class Adder(ttk.Frame):
 			if stats['type']=='ue3_stats' or stats['type']=='ue2_stats' or stats['type']=='ue1_stats':
 				try:
 					if init_plot_success_rate:
-						f = Figure(figsize=(10.5,2.2), dpi=100)
+						f = Figure(figsize=(9,2.2), dpi=100)
 						ax = f.add_subplot(111)
 						ax.grid(True)
 						ax.set_xlabel('Time [s]')
@@ -681,7 +680,7 @@ class Adder(ttk.Frame):
 	self.LabelSettingInfos.grid(column=0,row=1,sticky=W)
 
         #CHANNEL FRAME
-        self.channel_frame = ttk.LabelFrame(self, text='Channel occupation', height=100, width=100)
+        self.channel_frame = ttk.LabelFrame(self, text='Channel occupation', height=100, width=20)
         self.channel_frame.grid(column=1, row=1, columnspan=1, sticky='nesw')
 
 	thread.start_new_thread(self.loop_statistics,(1,))
@@ -710,36 +709,39 @@ class Adder(ttk.Frame):
         self.cleanPlotBtn.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
 
 	#Traffic Frame
-	self.wmp_frame=ttk.LabelFrame(self, text='WMP STATE MACHINE ENFORCEMENT', height=100, width=100)
-        self.wmp_frame.grid(column=0, row=3, columnspan=1, sticky='nesw')
+	self.wmp_frame=ttk.LabelFrame(self, text='WMP STATE MACHINE ENFORCEMENT', height=10, width=10)
+        self.wmp_frame.grid(column=3, row=2, columnspan=1, sticky='nesw')
 
 
-	list_subframes=[x for x in range(1,11)]
-	self.blankframes = StringVar(value=list_subframes[3])
-        self.subframes = OptionMenu(self.wmp_frame, self.blankframes, *list_subframes)
-	self.subframes.configure(state="active")
-        self.subframes.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
+#	list_subframes=[x for x in range(1,11)]
+#	self.blankframes = StringVar(value=list_subframes[3])
+ #       self.subframes = OptionMenu(self.wmp_frame, self.blankframes, *list_subframes)
+#	self.subframes.configure(state="active")
+ #       self.subframes.grid(row=1, column=1, padx=15, pady=15, ipady=2, sticky=W)
+	
+	self.blankframes = StringVar(value='4')
 
         self.startControllerLTEBtn = ttk.Button(self.wmp_frame, text="TDMA+LTEcoex", width=15, command=lambda: self.startControllerLTE('2',self.blankframes.get()),  style=SUNKABLE_BUTTON)
         self.startControllerLTEBtn.grid(row=2, column=1, padx=15, pady=15, ipady=2, sticky=W)
         self.dcfControllerLTEBtn = ttk.Button(self.wmp_frame, text="DCF", width=15, command=lambda: self.startControllerLTE('1',0),  style=SUNKABLE_BUTTON)
         self.dcfControllerLTEBtn.grid(row=2, column=3, padx=15, pady=15, ipady=2, sticky=W)
-#	self.topo_frame=ttk.LabelFrame(self, text="Network Scenario", height=100, width=90)
-#        self.topo_frame.grid(column=0, row=4, columnspan=1, sticky='nesw')
+
+	self.topo_frame=ttk.LabelFrame(self, text="Network Scenario", height=100, width=400)
+        self.topo_frame.grid(column=3, row=1, columnspan=1, sticky='nesw')
 	
 
 
-#	wpercent=50
-#	basewidth = 350
-#	img=Image.open('topology.png')
-#	wpercent = (basewidth/float(img.size[0]))
-#	hsize = int((float(img.size[1])*float(wpercent)))
-#	img = img.resize((basewidth,hsize), Image.ANTIALIAS)
+	wpercent=50
+	basewidth = 550
+	img=Image.open('topo.png')
+	wpercent = (basewidth/float(img.size[0]))
+	hsize = int((float(img.size[1])*float(wpercent)))
+	img = img.resize((basewidth,hsize), Image.ANTIALIAS)
 	
-#	im = ImageTk.PhotoImage(img)
-#	label_topo_img = Label(self.topo_frame, image=im)
-#	label_topo_img.image = im
-#	label_topo_img.grid(row=0,column=0, sticky=W+E)
+	im = ImageTk.PhotoImage(img)
+	label_topo_img = Label(self.topo_frame, image=im)
+	label_topo_img.image = im
+	label_topo_img.grid(row=0,column=0, sticky=W+E)
 	
 	
 
@@ -768,7 +770,7 @@ class Adder(ttk.Frame):
 
 if __name__ == '__main__':
     root = Tk()
-    root.resizable(0,0)
+#    root.resizable(0,0)
     signal.signal(signal.SIGINT, handle_ctrl_c)
     Adder(root)
     root.lift()
